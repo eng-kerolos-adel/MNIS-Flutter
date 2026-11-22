@@ -17,6 +17,13 @@ class SecureSessionStore {
   static const _kEmergencyCachedAt = 'mnis.emergencyCachedAt';
   static const _kProfileCache = 'mnis.profileCache';
   static const _kBiometricEnabled = 'mnis.biometricEnabled';
+  static const _kBiometricUserId = 'mnis.biometricUserId';
+  static const _kBiometricNationalId = 'mnis.biometricNationalId';
+  static const _kBiometricPassword = 'mnis.biometricPassword';
+  static const _kBiometricRefreshToken = 'mnis.biometricRefreshToken';
+  static const _kLastLoginUserId = 'mnis.lastLoginUserId';
+  static const _kLastLoginNationalId = 'mnis.lastLoginNationalId';
+  static const _kLastLoginPassword = 'mnis.lastLoginPassword';
 
   Future<String?> readRefreshToken() => _storage.read(key: _kRefreshToken);
   Future<void> writeRefreshToken(String token) =>
@@ -46,6 +53,106 @@ class SecureSessionStore {
       (await _storage.read(key: _kBiometricEnabled)) == 'true';
   Future<void> writeBiometricEnabled(bool enabled) =>
       _storage.write(key: _kBiometricEnabled, value: enabled.toString());
+
+  Future<void> saveLastLoginCredentials({
+    required String userId,
+    required String nationalId,
+    required String password,
+  }) async {
+    await _storage.write(key: _kLastLoginUserId, value: userId);
+    await _storage.write(key: _kLastLoginNationalId, value: nationalId);
+    await _storage.write(key: _kLastLoginPassword, value: password);
+  }
+
+  Future<({String userId, String nationalId, String password})?>
+      readLastLoginCredentials() async {
+    final userId = await _storage.read(key: _kLastLoginUserId);
+    final nationalId = await _storage.read(key: _kLastLoginNationalId);
+    final password = await _storage.read(key: _kLastLoginPassword);
+    if (userId == null ||
+        userId.isEmpty ||
+        nationalId == null ||
+        nationalId.isEmpty ||
+        password == null ||
+        password.isEmpty) {
+      return null;
+    }
+    return (userId: userId, nationalId: nationalId, password: password);
+  }
+
+  Future<void> writeBiometricRefreshToken(String? token) async {
+    if (token == null || token.isEmpty) {
+      await _storage.delete(key: _kBiometricRefreshToken);
+      return;
+    }
+    await _storage.write(key: _kBiometricRefreshToken, value: token);
+  }
+
+  Future<String?> readBiometricRefreshToken() =>
+      _storage.read(key: _kBiometricRefreshToken);
+
+  Future<String?> readBiometricUserId() => _storage.read(key: _kBiometricUserId);
+
+  Future<void> saveBiometricEnrollment({
+    required String userId,
+    String? nationalId,
+    String? password,
+    String? refreshToken,
+  }) async {
+    await _storage.write(key: _kBiometricEnabled, value: 'true');
+    await _storage.write(key: _kBiometricUserId, value: userId);
+    if (nationalId != null &&
+        nationalId.isNotEmpty &&
+        password != null &&
+        password.isNotEmpty) {
+      await _storage.write(key: _kBiometricNationalId, value: nationalId);
+      await _storage.write(key: _kBiometricPassword, value: password);
+    }
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      await _storage.write(key: _kBiometricRefreshToken, value: refreshToken);
+    }
+  }
+
+  Future<void> disableBiometricEnrollment() async {
+    await _storage.write(key: _kBiometricEnabled, value: 'false');
+    await _storage.delete(key: _kBiometricUserId);
+    await _storage.delete(key: _kBiometricNationalId);
+    await _storage.delete(key: _kBiometricPassword);
+    await _storage.delete(key: _kBiometricRefreshToken);
+  }
+
+  Future<({String userId, String nationalId, String password})?>
+      readBiometricCredentials() async {
+    if (!await readBiometricEnabled()) return null;
+    final userId = await _storage.read(key: _kBiometricUserId);
+    final nationalId = await _storage.read(key: _kBiometricNationalId);
+    final password = await _storage.read(key: _kBiometricPassword);
+    if (userId == null ||
+        userId.isEmpty ||
+        nationalId == null ||
+        nationalId.isEmpty ||
+        password == null ||
+        password.isEmpty) {
+      return null;
+    }
+    return (userId: userId, nationalId: nationalId, password: password);
+  }
+
+  Future<bool> isBiometricEnrolledForUser(String userId) async {
+    if (!await readBiometricEnabled()) return false;
+    final storedUserId = await _storage.read(key: _kBiometricUserId);
+    if (storedUserId != userId) return false;
+    return await readBiometricCredentials() != null ||
+        await readBiometricRefreshToken() != null ||
+        await readRefreshToken() != null;
+  }
+
+  Future<bool> hasBiometricCredentials() async {
+    if (!await readBiometricEnabled()) return false;
+    return await readBiometricCredentials() != null ||
+        await readBiometricRefreshToken() != null ||
+        await readRefreshToken() != null;
+  }
 
   /// Called on logout / forced sign-out. Emergency cache is intentionally
   /// kept so the offline emergency card still works right after a sign-out

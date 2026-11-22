@@ -1,9 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/router/app_router.dart';
@@ -11,11 +11,10 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/providers/session_provider.dart';
 import '../../../../core/storage/secure_session_store.dart';
+import '../../../../core/utils/biometric_enrollment.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/utils/providers.dart';
 import '../../../../core/utils/shared_widgets.dart';
-
-const _kBiometricPromptedKey = 'mnis.biometricPrompted';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -30,7 +29,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _obscure = true;
   bool _loading = false;
-  bool _biometricAvailable = false;
+  bool _deviceSupportsBiometric = false;
+  bool _hasStoredBiometric = false;
   final _localAuth = LocalAuthentication();
 
   @override
@@ -40,18 +40,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _checkBiometricAvailability() async {
-    try {
-      final supported = await _localAuth.isDeviceSupported();
-      final canCheck = await _localAuth.canCheckBiometrics;
-      final hasStoredSession =
-          await SecureSessionStore.instance.readRefreshToken() != null;
-      final enabled = await SecureSessionStore.instance.readBiometricEnabled();
+    if (kIsWeb) {
       if (mounted) {
-        setState(() => _biometricAvailable =
-            supported && canCheck && hasStoredSession && enabled);
+        setState(() {
+          _deviceSupportsBiometric = false;
+          _hasStoredBiometric = false;
+        });
+      }
+      return;
+    }
+    try {
+      final supported = await isBiometricHardwareAvailable(_localAuth);
+      final hasStoredBiometric =
+          await SecureSessionStore.instance.hasBiometricCredentials();
+      if (mounted) {
+        setState(() {
+          _deviceSupportsBiometric = supported;
+          _hasStoredBiometric = hasStoredBiometric;
+        });
       }
     } catch (_) {
-      if (mounted) setState(() => _biometricAvailable = false);
+      if (mounted) {
+        setState(() {
+          _deviceSupportsBiometric = false;
+          _hasStoredBiometric = false;
+        });
+      }
     }
   }
 
@@ -76,7 +90,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context.go(AppRoutes.changePassword);
         return;
       }
-      await _maybeOfferBiometric();
+      if (user.requiresPhoneVerification) {
+        context.go(AppRoutes.verifyPhone);
+        return;
+      }
+      await promptBiometricEnrollmentIfEligible(
+        context,
+        ref,
+        user.id,
+        forcePrompt: true,
+      );
       if (!mounted) return;
       context.go(AppRoutes.home);
     } catch (e) {
@@ -87,41 +110,70 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  Future<void> _maybeOfferBiometric() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(_kBiometricPromptedKey) ?? false) return;
-    await prefs.setBool(_kBiometricPromptedKey, true);
-    bool canCheck = false;
-    try {
-      canCheck = await _localAuth.canCheckBiometrics && await _localAuth.isDeviceSupported();
-    } catch (_) {
-      canCheck = false;
-    }
-    if (!canCheck || !mounted) return;
+  Future<void> _biometricLogin() async {
+    if (_loading) return;
+    final isAr = _isAr;
     final l = AppLocalizations.of(context);
-    final enable = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l.enableBiometricTitle),
-        content: Text(l.enableBiometricBody),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.notNow)),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.enable)),
-        ],
-      ),
-    );
-    if (enable == true) {
-      await SecureSessionStore.instance.writeBiometricEnabled(true);
+    if (!_hasStoredBiometric) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.fingerprint_rounded, size: 36),
+          title: Text(l.fingerprintLogin),
+          content: Text(
+            isAr
+                ? 'لتفعيل الدخول بالبصمة، سجّل دخولك أولاً بالرقم القومي وكلمة المرور وأتمّ التحقق عبر SMS، وبعدها ستظهر لك نافذة تفعيل البصمة مباشرة.'
+                : 'To activate fingerprint sign-in, first sign in once with your National ID and password and complete SMS verification. You will be prompted to enable biometrics immediately.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l.close),
+            ),
+          ],
+        ),
+      );
+      return;
     }
-  }
 
-  void _biometricLogin() {
-    // AppLockScreen owns the one real implementation of the fingerprint/face
-    // check (and, when needed, redeeming the stored session) — this button
-    // just opens it. Keeping the logic in one place is what makes "unlock
-    // with biometric" behave identically here and when the app re-locks
-    // itself after being backgrounded.
-    context.push(AppRoutes.appLock);
+    final ok = await authenticateWithBiometrics(
+      _localAuth,
+      reason: isAr
+          ? 'استخدم بصمتك لتسجيل الدخول إلى MNIS'
+          : 'Use your fingerprint to sign in to MNIS',
+    );
+    if (!mounted) return;
+    if (!ok) {
+      _showSnack(l.biometricFailed);
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final user = await ref
+          .read(sessionControllerProvider.notifier)
+          .loginWithBiometric();
+      if (!mounted) return;
+      if (user == null) {
+        await _checkBiometricAvailability();
+        _showSnack(l.biometricNoSession);
+        return;
+      }
+      if (user.mustChangePassword) {
+        context.go(AppRoutes.changePassword);
+        return;
+      }
+      if (user.requiresPhoneVerification) {
+        context.go(AppRoutes.verifyPhone);
+        return;
+      }
+      context.go(AppRoutes.home);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(friendlyError(e, isAr: isAr));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   void _showAccountInfo() {
@@ -260,7 +312,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               : const Icon(Icons.verified_user_rounded),
                           label: Text(l.secureLogin),
                         ),
-                        if (_biometricAvailable) ...[
+                        if (_deviceSupportsBiometric) ...[
                           const SizedBox(height: 16),
                           Row(
                             children: [

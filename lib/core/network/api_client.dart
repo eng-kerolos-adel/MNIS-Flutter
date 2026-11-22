@@ -37,8 +37,12 @@ class ApiClient {
   Future<T> get<T>(String path, T Function(dynamic json) parse) =>
       _send('GET', path, null, parse);
 
-  Future<T> delete<T>(String path, T Function(dynamic json) parse) =>
-      _send('DELETE', path, null, parse);
+  Future<T> delete<T>(
+    String path,
+    T Function(dynamic json) parse, {
+    Object? body,
+  }) =>
+      _send('DELETE', path, body, parse);
 
   Future<T> post<T>(
     String path,

@@ -12,6 +12,7 @@ import '../../features/lab_results/presentation/screens/lab_results_screen.dart'
 import '../../features/prescriptions/presentation/screens/prescriptions_screen.dart';
 import '../../features/emergency_qr/presentation/screens/emergency_qr_screen.dart';
 import '../../features/auth/presentation/screens/change_password_screen.dart';
+import '../../features/auth/presentation/screens/phone_verification_screen.dart';
 import '../../features/appointments/presentation/screens/appointments_screen.dart';
 import '../../features/share_record/presentation/screens/share_record_screen.dart';
 import '../../features/app_lock/presentation/screens/app_lock_screen.dart';
@@ -34,6 +35,7 @@ abstract class AppRoutes {
   static const appLock = '/app-lock';
   static const documents = '/documents';
   static const notifications = '/notifications';
+  static const verifyPhone = '/verify-phone';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -107,6 +109,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _slideTransition(
           key: state.pageKey,
           child: const NotificationsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.verifyPhone,
+        pageBuilder: (context, state) => _slideTransition(
+          key: state.pageKey,
+          child: const PhoneVerificationScreen(),
         ),
       ),
       GoRoute(

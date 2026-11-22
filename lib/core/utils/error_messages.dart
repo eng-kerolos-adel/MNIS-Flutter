@@ -20,6 +20,26 @@ String friendlyError(Object error, {required bool isAr}) {
       ar: 'يجب تغيير كلمة المرور المؤقتة أولاً',
       en: 'You must change your temporary password first',
     ),
+    'PHONE_VERIFICATION_REQUIRED': (
+      ar: 'يجب تأكيد رقم هاتفك عبر رسالة SMS أولاً للمتابعة',
+      en: 'You must verify your mobile number via SMS before continuing',
+    ),
+    'PHONE_ALREADY_USED': (
+      ar: 'رقم الهاتف مسجّل بالفعل لمواطن آخر في المنظومة',
+      en: 'This mobile number is already registered to another citizen',
+    ),
+    'INVALID_PHONE_NUMBER': (
+      ar: 'رقم الهاتف المسجل غير صالح',
+      en: 'Registered mobile number format is invalid',
+    ),
+    'NO_PHONE_REGISTERED': (
+      ar: 'لم يسجّل مكتب الاستقبال رقم هاتف لحسابك بعد',
+      en: 'Reception has not registered a mobile number for your account yet',
+    ),
+    'PHONE_MISMATCH': (
+      ar: 'الرقم المؤكد لا يطابق الرقم المسجّل لدى الاستقبال',
+      en: 'Verified number does not match the reception-registered number',
+    ),
     'NO_LINKED_PATIENT': (
       ar: 'هذا الحساب غير مرتبط بملف طبي',
       en: 'This account is not linked to a medical file',

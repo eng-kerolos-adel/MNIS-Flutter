@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
 
 import '../../../../core/l10n/app_localizations.dart';
+import '../../../../core/models/models.dart';
 import '../../../../core/providers/app_lock_provider.dart';
 import '../../../../core/providers/session_provider.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../../core/utils/biometric_enrollment.dart';
 import '../../../../core/utils/providers.dart';
 import '../../../../core/utils/shared_widgets.dart';
 
@@ -48,18 +49,12 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       _failed = false;
     });
     final isAr = ref.read(localeProvider).languageCode == 'ar';
-    bool ok = false;
-    try {
-      ok = await _localAuth.authenticate(
-        localizedReason: isAr
-            ? 'أثبت هويتك لفتح تطبيق MNIS'
-            : 'Verify your identity to unlock MNIS',
-        biometricOnly: true,
-        persistAcrossBackgrounding: true,
-      );
-    } on PlatformException {
-      ok = false;
-    }
+    final ok = await authenticateWithBiometrics(
+      _localAuth,
+      reason: isAr
+          ? 'أثبت هويتك لفتح تطبيق MNIS'
+          : 'Verify your identity to unlock MNIS',
+    );
 
     if (!mounted) return;
 
@@ -76,19 +71,27 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     if (current != null) {
       ref.read(appUnlockedProvider.notifier).state = true;
       if (mounted) {
-        context.go(current.mustChangePassword
-            ? AppRoutes.changePassword
-            : AppRoutes.home);
+        context.go(
+          current.mustChangePassword
+              ? AppRoutes.changePassword
+              : current.requiresPhoneVerification
+                  ? AppRoutes.verifyPhone
+                  : AppRoutes.home,
+        );
       }
       return;
     }
 
-    // No session yet (reached from the login screen's fallback button) —
-    // the fingerprint only proves "this is the phone's owner"; it still has
-    // to redeem the stored refresh token to actually get a session.
-    final restored = await ref
-        .read(sessionControllerProvider.notifier)
-        .restoreForBiometric();
+    // No session yet (reached from the login screen's biometric button) —
+    // first try restoring the stored refresh token, else sign in using the
+    // hardware-encrypted biometric credentials saved at enrollment.
+    SessionUser? restored;
+    try {
+      restored =
+          await ref.read(sessionControllerProvider.notifier).loginWithBiometric();
+    } catch (_) {
+      restored = null;
+    }
     if (!mounted) return;
     if (restored == null) {
       setState(() {
@@ -102,9 +105,13 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       return;
     }
     ref.read(appUnlockedProvider.notifier).state = true;
-    context.go(restored.mustChangePassword
-        ? AppRoutes.changePassword
-        : AppRoutes.home);
+    context.go(
+      restored.mustChangePassword
+          ? AppRoutes.changePassword
+          : restored.requiresPhoneVerification
+              ? AppRoutes.verifyPhone
+              : AppRoutes.home,
+    );
   }
 
   Future<void> _usePasswordInstead() async {

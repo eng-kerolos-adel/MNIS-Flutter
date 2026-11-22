@@ -47,6 +47,7 @@ class SessionUser {
   final String fullNameAr;
   final String? patientId;
   final bool mustChangePassword;
+  final bool phoneVerified;
 
   const SessionUser({
     required this.id,
@@ -56,19 +57,25 @@ class SessionUser {
     required this.fullNameAr,
     required this.patientId,
     required this.mustChangePassword,
+    required this.phoneVerified,
   });
 
-  factory SessionUser.fromJson(Map<String, dynamic> j) => SessionUser(
-        id: j['id'] as String,
-        email: j['email'] as String?,
-        role: j['role'] as String,
-        fullNameEn: (j['fullNameEn'] as String?) ?? '',
-        fullNameAr: (j['fullNameAr'] as String?) ?? '',
-        patientId: j['patientId'] as String?,
-        mustChangePassword: (j['mustChangePassword'] as bool?) ?? false,
-      );
+  factory SessionUser.fromJson(Map<String, dynamic> j) {
+    final role = (j['role'] as String?) ?? 'PATIENT';
+    return SessionUser(
+      id: j['id'] as String,
+      email: j['email'] as String?,
+      role: role,
+      fullNameEn: (j['fullNameEn'] as String?) ?? '',
+      fullNameAr: (j['fullNameAr'] as String?) ?? '',
+      patientId: j['patientId'] as String?,
+      mustChangePassword: (j['mustChangePassword'] as bool?) ?? false,
+      phoneVerified: (j['phoneVerified'] as bool?) ?? (role != 'PATIENT'),
+    );
+  }
 
   bool get isPatient => role == 'PATIENT';
+  bool get requiresPhoneVerification => role == 'PATIENT' && !phoneVerified;
 }
 
 // ─── Patient profile ──────────────────────────────────────────────────────
@@ -80,6 +87,9 @@ class PatientProfile {
   final String sex; // 'MALE' | 'FEMALE'
   final DateTime? birthDate;
   final String bloodType;
+  final String? phone;
+  final String? phoneMasked;
+  final DateTime? phoneVerifiedAt;
   final Bilingual address;
   final String? photoUrl;
   final bool insuranceActive;
@@ -94,6 +104,9 @@ class PatientProfile {
     required this.sex,
     required this.birthDate,
     required this.bloodType,
+    this.phone,
+    this.phoneMasked,
+    this.phoneVerifiedAt,
     required this.address,
     required this.photoUrl,
     required this.insuranceActive,
@@ -104,6 +117,7 @@ class PatientProfile {
 
   int get age => birthDate == null ? 0 : ageFromBirthDate(birthDate!);
   bool get isFemale => sex == 'FEMALE';
+  bool get isPhoneVerified => phoneVerifiedAt != null;
 
   factory PatientProfile.fromJson(Map<String, dynamic> j) => PatientProfile(
         mti: (j['mti'] as String?) ?? '—',
@@ -112,6 +126,9 @@ class PatientProfile {
         sex: (j['sex'] as String?) ?? 'MALE',
         birthDate: parseDate(j['birthDate']),
         bloodType: (j['bloodType'] as String?) ?? '—',
+        phone: j['phone'] as String?,
+        phoneMasked: j['phoneMasked'] as String?,
+        phoneVerifiedAt: parseDate(j['phoneVerifiedAt']),
         address: Bilingual.of({'en': j['addressEn'], 'ar': j['addressAr']}),
         photoUrl: j['photoUrl'] as String?,
         insuranceActive: (j['insuranceActive'] as bool?) ?? false,
@@ -123,6 +140,9 @@ class PatientProfile {
   Map<String, dynamic> toJson() => {
         'mti': mti,
         'nationalId': nationalId,
+        'phone': phone,
+        'phoneMasked': phoneMasked,
+        'phoneVerifiedAt': phoneVerifiedAt?.toIso8601String(),
         'fullNameEn': fullName.en,
         'fullNameAr': fullName.ar,
         'sex': sex,

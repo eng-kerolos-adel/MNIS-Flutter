@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<defaultsMap>
+    <entry>
+        <key>maintenance_mode</key>
+        <value>false</value>
+    </entry>
+    <entry>
+        <key>maintenance_message_ar</key>
+        <value>جاري إجراء صيانة دورية للمنظومة، نعود خلال دقائق.</value>
+    </entry>
+    <entry>
+        <key>maintenance_message_en</key>
+        <value>Scheduled system maintenance in progress. We will be back shortly.</value>
+    </entry>
+    <entry>
+        <key>min_supported_app_version</key>
+        <value>1.0.0</value>
+    </entry>
+    <entry>
+        <key>ai_health_assistant_enabled</key>
+        <value>true</value>
+    </entry>
+    <entry>
+        <key>ai_gemini_model</key>
+        <value>gemini-3.8-flash</value>
+    </entry>
+    <entry>
+        <key>realtime_queue_sync_enabled</key>
+        <value>true</value>
+    </entry>
+    <entry>
+        <key>emergency_qr_ttl_minutes</key>
+        <value>15</value>
+    </entry>
+</defaultsMap>

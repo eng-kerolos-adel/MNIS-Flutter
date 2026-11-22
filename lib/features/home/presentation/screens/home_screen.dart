@@ -8,6 +8,7 @@ import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/models/appointment_models.dart';
 import '../../../../core/models/models.dart';
 import '../../../../core/providers/data_providers.dart';
+import '../../../../core/providers/notifications_provider.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -72,10 +73,21 @@ class HomeScreen extends ConsumerWidget {
                   ],
                 ),
                 actions: [
-                  IconButton(
-                    icon: Icon(Icons.notifications_outlined, color: cs.onSurfaceVariant),
-                    onPressed: () => context.push('/notifications'),
-                  ),
+                  Consumer(builder: (context, ref, _) {
+                    final unread = ref.watch(notificationsProvider).value
+                            ?.where((n) => n.readAt == null)
+                            .length ??
+                        0;
+                    return IconButton(
+                      icon: Badge(
+                        isLabelVisible: unread > 0,
+                        label: Text('$unread'),
+                        child: Icon(Icons.notifications_outlined,
+                            color: cs.onSurfaceVariant),
+                      ),
+                      onPressed: () => context.push(AppRoutes.notifications),
+                    );
+                  }),
                   IconButton(
                     icon: Icon(
                       isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
@@ -123,6 +135,18 @@ class HomeScreen extends ConsumerWidget {
                   delegate: SliverChildListDelegate([
                     const SizedBox(height: 12),
                     _GreetingBar(l: l, cs: cs, isAr: isAr, profileAsync: profileAsync),
+                    if (profileAsync.value?.phone != null &&
+                        !(profileAsync.value?.isPhoneVerified ?? false)) ...[
+                      const SizedBox(height: 12),
+                      _PhoneVerificationBanner(
+                        cs: cs,
+                        isAr: isAr,
+                        phoneMasked: profileAsync.value?.phoneMasked ??
+                            profileAsync.value?.phone ??
+                            '',
+                        onTap: () => context.push(AppRoutes.verifyPhone),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     AsyncValueView<PatientProfile>(
                       value: profileAsync,
@@ -182,6 +206,72 @@ class HomeScreen extends ConsumerWidget {
                     const SizedBox(height: 24),
                   ]),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhoneVerificationBanner extends StatelessWidget {
+  final ColorScheme cs;
+  final bool isAr;
+  final String phoneMasked;
+  final VoidCallback onTap;
+
+  const _PhoneVerificationBanner({
+    required this.cs,
+    required this.isAr,
+    required this.phoneMasked,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.secondary.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.secondary.withOpacity(0.35)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.sms_rounded, color: AppColors.secondary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isAr
+                          ? 'تأكيد هويتك بكود SMS'
+                          : 'Confirm Identity via SMS Code',
+                      style: AppTypography.bodySm.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    Text(
+                      isAr
+                          ? 'اضغط لاستلام كود تأكيد على رقمك المسجل لدى الاستقبال ($phoneMasked)'
+                          : 'Tap to receive an SMS code on your registered number ($phoneMasked)',
+                      style: AppTypography.labelSm
+                          .copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                isAr ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
+                color: AppColors.secondary,
               ),
             ],
           ),

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "994868849909",
+    "project_id": "mnis-egypt-dev",
+    "storage_bucket": "mnis-egypt-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:994868849909:android:0c6d6e96438556437b29bc",
+        "android_client_info": {
+          "package_name": "com.kerolosadel.mnis_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-YVdBdOboBi4TqtKXVvHCuLGzIaJxD5Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

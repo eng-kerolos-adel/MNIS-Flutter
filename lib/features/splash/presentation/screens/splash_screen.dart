@@ -71,6 +71,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         context.go(AppRoutes.changePassword);
         return;
       }
+      if (user.requiresPhoneVerification) {
+        context.go(AppRoutes.verifyPhone);
+        return;
+      }
       // A restored (not freshly password-authenticated) session still has to
       // clear the biometric lock, if the citizen turned it on, before the
       // app shows anything — this is what makes biometric a real re-entry

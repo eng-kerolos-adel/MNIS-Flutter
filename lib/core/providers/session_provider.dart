@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../firebase/firebase_auth_bridge.dart';
 import '../models/models.dart';
 import '../network/api_client.dart';
 import '../network/api_exception.dart';
@@ -21,6 +24,12 @@ final sessionControllerProvider =
 
 class SessionController extends AsyncNotifier<SessionUser?> {
   bool _wiredExpiryHook = false;
+  String? _lastLoginNationalId;
+  String? _lastLoginPassword;
+
+  bool get hasInMemoryCredentials =>
+      (_lastLoginNationalId?.isNotEmpty ?? false) &&
+      (_lastLoginPassword?.isNotEmpty ?? false);
 
   @override
   Future<SessionUser?> build() async {
@@ -29,6 +38,10 @@ class SessionController extends AsyncNotifier<SessionUser?> {
       // If a background refresh ever fails, drop the session synchronously
       // so the UI can navigate to login (see main_shell.dart's ref.listen).
       ref.read(apiClientProvider).onSessionExpired = () {
+        unawaited(
+          FirebaseAuthBridge.instance
+              .clearSession(ref.read(repositoryProvider)),
+        );
         SecureSessionStore.instance.clearSession();
         state = const AsyncData(null);
       };
@@ -45,8 +58,14 @@ class SessionController extends AsyncNotifier<SessionUser?> {
       ref.read(apiClientProvider).setAccessToken(r.accessToken);
       if (r.refreshToken != null) {
         await SecureSessionStore.instance.writeRefreshToken(r.refreshToken!);
+        if (await SecureSessionStore.instance.readBiometricEnabled()) {
+          await SecureSessionStore.instance
+              .writeBiometricRefreshToken(r.refreshToken!);
+        }
       }
-      return await repo.me();
+      final user = await repo.me();
+      unawaited(FirebaseAuthBridge.instance.syncSession(repo, user));
+      return user;
     } on ApiException {
       await SecureSessionStore.instance.clearRefreshToken();
       return null;
@@ -71,16 +90,87 @@ class SessionController extends AsyncNotifier<SessionUser?> {
     final repo = ref.read(repositoryProvider);
     try {
       final r = await repo.login(nationalId, password);
+      _lastLoginNationalId = nationalId;
+      _lastLoginPassword = password;
       ref.read(apiClientProvider).setAccessToken(r.accessToken);
       if (r.refreshToken != null) {
         await SecureSessionStore.instance.writeRefreshToken(r.refreshToken!);
+        if (await SecureSessionStore.instance.readBiometricEnabled()) {
+          await SecureSessionStore.instance
+              .writeBiometricRefreshToken(r.refreshToken!);
+        }
+      }
+      await SecureSessionStore.instance.saveLastLoginCredentials(
+        userId: r.user.id,
+        nationalId: nationalId,
+        password: password,
+      );
+      if (await SecureSessionStore.instance.readBiometricEnabled()) {
+        final prevBioUserId =
+            await SecureSessionStore.instance.readBiometricUserId();
+        if (prevBioUserId == null || prevBioUserId == r.user.id) {
+          await SecureSessionStore.instance.saveBiometricEnrollment(
+            userId: r.user.id,
+            nationalId: nationalId,
+            password: password,
+            refreshToken: r.refreshToken,
+          );
+        } else {
+          await SecureSessionStore.instance.disableBiometricEnrollment();
+        }
       }
       state = AsyncData(r.user);
+      unawaited(FirebaseAuthBridge.instance.syncSession(repo, r.user));
       return r.user;
     } catch (e, st) {
       state = AsyncError(e, st);
       rethrow;
     }
+  }
+
+  Future<bool> enrollBiometric({
+    String? nationalIdOverride,
+    String? passwordOverride,
+  }) async {
+    final user = state.value;
+    if (user == null) return false;
+    var nid = (nationalIdOverride ?? _lastLoginNationalId)?.trim();
+    var pw = passwordOverride ?? _lastLoginPassword;
+    if (nid == null || nid.isEmpty || pw == null || pw.isEmpty) {
+      final last = await SecureSessionStore.instance.readLastLoginCredentials();
+      if (last != null && last.userId == user.id) {
+        nid = last.nationalId;
+        pw = last.password;
+      }
+    }
+    final currentRefresh = await SecureSessionStore.instance.readRefreshToken();
+    await SecureSessionStore.instance.saveBiometricEnrollment(
+      userId: user.id,
+      nationalId: nid,
+      password: pw,
+      refreshToken: currentRefresh,
+    );
+    return true;
+  }
+
+  Future<void> disableBiometric() =>
+      SecureSessionStore.instance.disableBiometricEnrollment();
+
+  Future<SessionUser?> loginWithBiometric() async {
+    final creds = await SecureSessionStore.instance.readBiometricCredentials();
+    if (creds != null) {
+      try {
+        return await login(creds.nationalId, creds.password);
+      } catch (_) {
+        // Fallback to refresh token if stored password is stale (e.g. changed elsewhere)
+      }
+    }
+    final bioToken =
+        await SecureSessionStore.instance.readBiometricRefreshToken() ??
+            await SecureSessionStore.instance.readRefreshToken();
+    if (bioToken == null || bioToken.isEmpty) return null;
+    await SecureSessionStore.instance.writeRefreshToken(bioToken);
+    return restoreForBiometric();
   }
 
   Future<void> changePassword(String current, String next) async {
@@ -90,11 +180,22 @@ class SessionController extends AsyncNotifier<SessionUser?> {
   }
 
   Future<void> logout() async {
+    final repo = ref.read(repositoryProvider);
     final stored = await SecureSessionStore.instance.readRefreshToken();
+    final bioEnabled = await SecureSessionStore.instance.readBiometricEnabled();
+    _lastLoginNationalId = null;
+    _lastLoginPassword = null;
     try {
-      await ref.read(repositoryProvider).logout(stored);
-    } catch (_) {
-      /* best-effort: still clear locally even if the call fails offline */
+      await FirebaseAuthBridge.instance.clearSession(repo);
+    } catch (_) {}
+    if (bioEnabled && stored != null && stored.isNotEmpty) {
+      await SecureSessionStore.instance.writeBiometricRefreshToken(stored);
+    } else {
+      try {
+        await repo.logout(stored);
+      } catch (_) {
+        /* best-effort: still clear locally even if the call fails offline */
+      }
     }
     ref.read(apiClientProvider).setAccessToken(null);
     await SecureSessionStore.instance.clearSession();

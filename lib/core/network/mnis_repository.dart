@@ -178,6 +178,36 @@ class MnisRepository {
 
   Future<void> markNotificationRead(String id) =>
       _api.patch('/notifications/$id/read', {}, (_) => null);
+
+  // ── Firebase Bridge & Push Tokens ─────────────────────────────────────
+  Future<String> fetchFirebaseCustomToken() async {
+    final res = await _api.post('/auth/firebase-token', {}, _asMap);
+    return res['token'] as String;
+  }
+
+  Future<void> registerPushToken(String token, String platform) =>
+      _api.post(
+        '/notifications/token',
+        {'token': token, 'platform': platform},
+        (_) => null,
+      );
+
+  Future<void> unregisterPushToken(String token) =>
+      _api.delete(
+        '/notifications/token',
+        (_) => null,
+        body: {'token': token},
+      );
+
+  Future<Map<String, dynamic>> fetchPhoneStatus() =>
+      _api.get('/auth/phone-status', _asMap);
+
+  Future<Map<String, dynamic>> verifyPhone(String firebaseIdToken) =>
+      _api.post(
+        '/auth/verify-phone',
+        {'firebaseIdToken': firebaseIdToken},
+        _asMap,
+      );
 }
 
 

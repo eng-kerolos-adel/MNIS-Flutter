@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/providers.dart';
 import '../../../../core/providers/notifications_provider.dart';
+import '../../../../core/providers/session_provider.dart';
 import '../../../../core/widgets/async_view.dart';
 
 class NotificationsScreen extends ConsumerWidget {
