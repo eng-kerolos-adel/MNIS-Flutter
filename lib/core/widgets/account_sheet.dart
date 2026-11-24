@@ -51,7 +51,9 @@ class _AccountSheet extends ConsumerWidget {
           borderRadius: BorderRadius.circular(24),
         ),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-        child: SingleChildScrollView(
+        child: Material(
+          type: MaterialType.transparency,
+          child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -188,6 +190,7 @@ class _AccountSheet extends ConsumerWidget {
           ],
           ),
         ),
+      ),
       ),
     );
   }

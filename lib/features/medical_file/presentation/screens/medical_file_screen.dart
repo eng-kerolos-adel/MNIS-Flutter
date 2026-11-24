@@ -919,20 +919,23 @@ class _SovereignSummaryHub extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    Expanded( 
+                        child:
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: cs.primaryContainer,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
+                      child: 
+                      Text(
                         'AES-256-GCM • AUDIT',
                         style: AppTypography.labelSm.copyWith(
                           color: cs.onPrimaryContainer,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
+                    ),),
                     Row(
                       children: [
                         Text(

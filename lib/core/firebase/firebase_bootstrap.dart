@@ -35,7 +35,7 @@ class FirebaseBootstrap {
 
   static const bool _enableAppCheck = bool.fromEnvironment(
     'ENABLE_APP_CHECK',
-    defaultValue: false,
+    defaultValue: true,
   );
 
   static Future<void> initialize() async {
@@ -122,6 +122,28 @@ class FirebaseBootstrap {
       if (_enableAppCheck) {
         await FirebaseAppCheck.instance.activate(
           providerAndroid: const AndroidPlayIntegrityProvider(),
+        );
+      }
+      return;
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      if (kDebugMode || useEmulators) {
+        if (_appCheckDebugToken.isNotEmpty || useEmulators) {
+          await FirebaseAppCheck.instance.activate(
+            providerApple: AppleDebugProvider(
+              debugToken:
+                  _appCheckDebugToken.isNotEmpty ? _appCheckDebugToken : null,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (_enableAppCheck) {
+        await FirebaseAppCheck.instance.activate(
+          providerApple: const AppleAppAttestWithDeviceCheckFallbackProvider(),
         );
       }
     }

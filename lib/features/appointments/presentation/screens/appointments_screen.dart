@@ -14,11 +14,18 @@ import '../../../../core/utils/providers.dart';
 import '../../../../core/utils/shared_widgets.dart';
 import '../../../../core/widgets/async_view.dart';
 
-class AppointmentsScreen extends ConsumerWidget {
+class AppointmentsScreen extends ConsumerStatefulWidget {
   const AppointmentsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AppointmentsScreen> createState() => _AppointmentsScreenState();
+}
+
+class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
+  AppointmentType? _filterType;
+
+  @override
+  Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final cs = Theme.of(context).colorScheme;
     final isAr = ref.watch(localeProvider).languageCode == 'ar';
@@ -34,7 +41,7 @@ class AppointmentsScreen extends ConsumerWidget {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openRequestSheet(context, ref),
+        onPressed: () => _openRequestSheet(context),
         icon: const Icon(Icons.add_rounded),
         label: Text(l.requestAppointment),
       ),
@@ -50,20 +57,81 @@ class AppointmentsScreen extends ConsumerWidget {
             isAr: isAr,
             onRetry: () => ref.invalidate(appointmentsProvider),
             builder: (context, list) {
-              if (list.isEmpty) {
-                return ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    const SizedBox(height: 60),
-                    EmptyState(icon: Icons.event_busy_rounded, message: l.appointmentsEmpty),
-                  ],
-                );
-              }
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                itemCount: list.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, i) => _AppointmentTile(l: l, cs: cs, isAr: isAr, appt: list[i]),
+              final filtered = _filterType == null
+                  ? list
+                  : list.where((a) => a.type == _filterType).toList();
+
+              return Column(
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Row(
+                      children: [
+                        ChoiceChip(
+                          label: Text(isAr ? 'الكل (${list.length})' : 'All (${list.length})'),
+                          selected: _filterType == null,
+                          onSelected: (_) => setState(() => _filterType = null),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          avatar: const Icon(Icons.local_hospital_rounded, size: 16),
+                          label: Text(
+                            '${l.appointmentTypeClinic} (${list.where((a) => a.type == AppointmentType.clinic).length})',
+                          ),
+                          selected: _filterType == AppointmentType.clinic,
+                          onSelected: (_) => setState(() => _filterType = AppointmentType.clinic),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          avatar: const Icon(Icons.biotech_rounded, size: 16),
+                          label: Text(
+                            '${l.appointmentTypeLab} (${list.where((a) => a.type == AppointmentType.lab).length})',
+                          ),
+                          selected: _filterType == AppointmentType.lab,
+                          onSelected: (_) => setState(() => _filterType = AppointmentType.lab),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          avatar: const Icon(Icons.radar_rounded, size: 16),
+                          label: Text(
+                            '${l.appointmentTypeRadiology} (${list.where((a) => a.type == AppointmentType.radiology).length})',
+                          ),
+                          selected: _filterType == AppointmentType.radiology,
+                          onSelected: (_) => setState(() => _filterType = AppointmentType.radiology),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? ListView(
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              const SizedBox(height: 60),
+                              EmptyState(
+                                icon: Icons.event_busy_rounded,
+                                message: list.isEmpty
+                                    ? l.appointmentsEmpty
+                                    : (isAr
+                                        ? 'لا توجد مواعيد مسجلة في هذا التصنيف'
+                                        : 'No appointments in this category'),
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 10),
+                            itemBuilder: (context, i) => _AppointmentTile(
+                              l: l,
+                              cs: cs,
+                              isAr: isAr,
+                              appt: filtered[i],
+                            ),
+                          ),
+                  ),
+                ],
               );
             },
           ),
@@ -72,7 +140,7 @@ class AppointmentsScreen extends ConsumerWidget {
     );
   }
 
-  void _openRequestSheet(BuildContext context, WidgetRef ref) {
+  void _openRequestSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -87,20 +155,67 @@ class _AppointmentTile extends ConsumerWidget {
   final ColorScheme cs;
   final bool isAr;
   final AppointmentModel appt;
-  const _AppointmentTile({required this.l, required this.cs, required this.isAr, required this.appt});
+  const _AppointmentTile({
+    required this.l,
+    required this.cs,
+    required this.isAr,
+    required this.appt,
+  });
 
   ({String label, Color bg, Color fg}) _style() {
     switch (appt.status) {
       case AppointmentStatus.confirmed:
-        return (label: l.statusConfirmed(isAr), bg: cs.tertiaryContainer.withOpacity(0.5), fg: cs.onTertiaryContainer);
+        return (
+          label: l.statusConfirmed(isAr),
+          bg: cs.tertiaryContainer.withOpacity(0.5),
+          fg: cs.onTertiaryContainer,
+        );
       case AppointmentStatus.rejected:
-        return (label: l.statusRejected(isAr), bg: cs.errorContainer, fg: cs.onErrorContainer);
+        return (
+          label: l.statusRejected(isAr),
+          bg: cs.errorContainer,
+          fg: cs.onErrorContainer,
+        );
       case AppointmentStatus.cancelled:
-        return (label: l.statusCancelled(isAr), bg: cs.surfaceContainerHigh, fg: cs.onSurfaceVariant);
+        return (
+          label: l.statusCancelled(isAr),
+          bg: cs.surfaceContainerHigh,
+          fg: cs.onSurfaceVariant,
+        );
       case AppointmentStatus.completed:
-        return (label: l.statusCompleted(isAr), bg: cs.secondaryContainer.withOpacity(0.5), fg: cs.onSecondaryContainer);
+        return (
+          label: l.statusCompleted(isAr),
+          bg: cs.secondaryContainer.withOpacity(0.5),
+          fg: cs.onSecondaryContainer,
+        );
       case AppointmentStatus.requested:
-        return (label: l.statusRequested(isAr), bg: cs.surfaceContainerHigh, fg: cs.secondary);
+        return (
+          label: l.statusRequested(isAr),
+          bg: cs.surfaceContainerHigh,
+          fg: cs.secondary,
+        );
+    }
+  }
+
+  IconData _typeIcon() {
+    switch (appt.type) {
+      case AppointmentType.clinic:
+        return Icons.local_hospital_rounded;
+      case AppointmentType.lab:
+        return Icons.biotech_rounded;
+      case AppointmentType.radiology:
+        return Icons.radar_rounded;
+    }
+  }
+
+  String _typeLabel() {
+    switch (appt.type) {
+      case AppointmentType.clinic:
+        return l.appointmentTypeClinic;
+      case AppointmentType.lab:
+        return l.appointmentTypeLab;
+      case AppointmentType.radiology:
+        return l.appointmentTypeRadiology;
     }
   }
 
@@ -126,17 +241,21 @@ class _AppointmentTile extends ConsumerWidget {
               Row(children: [
                 StatusBadge(label: s.label, backgroundColor: s.bg, textColor: s.fg, fontSize: 10),
                 const SizedBox(width: 6),
-                Icon(
-                  appt.type == AppointmentType.lab ? Icons.biotech_rounded : Icons.local_hospital_rounded,
-                  size: 14,
-                  color: cs.onSurfaceVariant,
+                StatusBadge(
+                  label: _typeLabel(),
+                  backgroundColor: cs.primaryContainer.withOpacity(0.5),
+                  textColor: cs.onPrimaryContainer,
+                  fontSize: 10,
                 ),
+                const SizedBox(width: 4),
+                Icon(_typeIcon(), size: 14, color: cs.onSurfaceVariant),
               ]),
               Text(df.format(date), style: AppTypography.labelMd.copyWith(color: cs.onSurfaceVariant)),
             ],
           ),
           const SizedBox(height: 8),
-          if (appt.type == AppointmentType.lab && appt.testPanel != null)
+          if ((appt.type == AppointmentType.lab || appt.type == AppointmentType.radiology) &&
+              appt.testPanel != null)
             Text(appt.testPanel!, style: AppTypography.headlineSm.copyWith(color: cs.primary), textAlign: TextAlign.right),
           Text(appt.reason, style: AppTypography.bodyMd.copyWith(color: cs.onSurface), textAlign: TextAlign.right),
           if (appt.doctorName != null &&
@@ -175,11 +294,7 @@ class _AppointmentTile extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(
-                  appt.type == AppointmentType.lab ? Icons.biotech_rounded : Icons.location_city_rounded,
-                  size: 13,
-                  color: cs.primary,
-                ),
+                Icon(_typeIcon(), size: 13, color: cs.primary),
               ],
             ),
           ],
@@ -250,12 +365,20 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
   bool _loadingSlots = false;
   bool _busy = false;
 
-  static const _commonPanels = [
+  static const _commonLabPanels = [
     'Complete Blood Count (CBC)',
     'HbA1c & Fasting Glucose',
     'Liver & Kidney Function (LFT/KFT)',
     'Lipid Profile',
     'Thyroid Profile (TSH/FT4)',
+  ];
+
+  static const _commonRadiologyStudies = [
+    'Chest X-Ray (أشعة عادية على الصدر)',
+    'CT Scan (أشعة مقطعية)',
+    'MRI Scan (رنين مغناطيسي)',
+    'Abdominal Ultrasound (سونار بطن وحوض)',
+    'Echocardiogram (إيكو ودوبلر على القلب)',
   ];
 
   @override
@@ -301,15 +424,24 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
     }
 
     if (_type == AppointmentType.clinic && _doctorId == null) {
-      warn(isAr ? 'اختر الطبيب والعيادة أولاً' : 'Please choose a physician & clinic');
+      warn(isAr ? 'اختر العيادة والطبيب أولاً' : 'Please choose a clinic & physician');
       return;
     }
     if (_type == AppointmentType.lab && _labId == null) {
-      warn(isAr ? 'اختر المعمل المسجل أولاً' : 'Please choose a registered laboratory');
+      warn(isAr ? 'اختر معمل التحاليل أولاً' : 'Please choose a medical analysis lab');
       return;
     }
-    if (_type == AppointmentType.lab && _testPanelCtrl.text.trim().isEmpty) {
-      warn(isAr ? 'حدد نوع التحليل المطلوب' : 'Please enter the required lab test panel');
+    if (_type == AppointmentType.radiology && _labId == null) {
+      warn(isAr ? 'اختر مركز الأشعة أولاً' : 'Please choose a radiology center');
+      return;
+    }
+    if ((_type == AppointmentType.lab || _type == AppointmentType.radiology) &&
+        _testPanelCtrl.text.trim().isEmpty) {
+      warn(
+        _type == AppointmentType.radiology
+            ? (isAr ? 'حدد نوع الأشعة المطلوبة' : 'Please enter the required imaging study')
+            : (isAr ? 'حدد نوع التحليل المطلوب' : 'Please enter the required lab test panel'),
+      );
       return;
     }
     if (_date == null) {
@@ -323,14 +455,15 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
 
     setState(() => _busy = true);
     try {
+      final isLabOrRad = _type == AppointmentType.lab || _type == AppointmentType.radiology;
       await ref.read(repositoryProvider).requestAppointment(
             preferredDate: _date!,
             preferredTime: _type == AppointmentType.clinic ? _selectedTime : null,
             reason: _reasonCtrl.text.trim(),
             doctorId: _type == AppointmentType.clinic ? _doctorId : null,
-            labId: _type == AppointmentType.lab ? _labId : null,
+            labId: isLabOrRad ? _labId : null,
             type: _type,
-            testPanel: _type == AppointmentType.lab ? _testPanelCtrl.text.trim() : null,
+            testPanel: isLabOrRad ? _testPanelCtrl.text.trim() : null,
           );
       ref.invalidate(appointmentsProvider);
       if (!mounted) return;
@@ -353,6 +486,8 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
     final loc = Locale(isAr ? 'ar' : 'en');
     final doctorsAsync = ref.watch(doctorsProvider);
     final labsAsync = ref.watch(labsProvider);
+    final isRadiologyTab = _type == AppointmentType.radiology;
+    final isAnalysisTab = _type == AppointmentType.lab;
 
     return SafeArea(
       child: Padding(
@@ -368,28 +503,46 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                 Text(l.requestAppointment, style: AppTypography.headlineMd.copyWith(color: cs.onSurface)),
                 const SizedBox(height: 14),
                 Text(l.chooseAppointmentType, style: AppTypography.labelLg.copyWith(color: cs.onSurface)),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 SegmentedButton<AppointmentType>(
+                  showSelectedIcon: false,
                   segments: [
                     ButtonSegment(
                       value: AppointmentType.clinic,
-                      icon: const Icon(Icons.local_hospital_rounded, size: 18),
-                      label: Text(l.appointmentTypeClinic),
+                      icon: const Icon(Icons.local_hospital_rounded, size: 17),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(l.appointmentTypeClinic, maxLines: 1),
+                      ),
                     ),
                     ButtonSegment(
                       value: AppointmentType.lab,
-                      icon: const Icon(Icons.biotech_rounded, size: 18),
-                      label: Text(l.appointmentTypeLab),
+                      icon: const Icon(Icons.biotech_rounded, size: 17),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(l.appointmentTypeLab, maxLines: 1),
+                      ),
+                    ),
+                    ButtonSegment(
+                      value: AppointmentType.radiology,
+                      icon: const Icon(Icons.radar_rounded, size: 17),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(l.appointmentTypeRadiology, maxLines: 1),
+                      ),
                     ),
                   ],
                   selected: {_type},
                   onSelectionChanged: (s) {
                     setState(() {
                       _type = s.first;
+                      _doctorId = null;
+                      _labId = null;
                       _slots = const [];
                       _selectedTime = null;
                       _providerSearch = '';
                       _providerSearchCtrl.clear();
+                      _testPanelCtrl.clear();
                     });
                     if (_type == AppointmentType.clinic) _fetchDoctorSlots();
                   },
@@ -404,7 +557,11 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                   child: Row(
                     children: [
                       Icon(
-                        _type == AppointmentType.clinic ? Icons.support_agent_rounded : Icons.biotech_rounded,
+                        _type == AppointmentType.clinic
+                            ? Icons.support_agent_rounded
+                            : isRadiologyTab
+                                ? Icons.radar_rounded
+                                : Icons.biotech_rounded,
                         size: 18,
                         color: cs.secondary,
                       ),
@@ -413,11 +570,15 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                         child: Text(
                           _type == AppointmentType.clinic
                               ? (isAr
-                                  ? 'يُرسل طلب الحجز إلى الموظف المساعد للطبيب المختار لتأكيد الموعد وإدراجك بطابور العيادة.'
-                                  : 'Sent directly to the selected physician\'s clinic assistant to confirm and queue your visit.')
-                              : (isAr
-                                  ? 'يُرسل طلب الحجز مباشرةً إلى موظف استقبال المعمل المختار لتأكيد الموعد وإصدار باركود العينة.'
-                                  : 'Sent directly to the selected laboratory\'s reception desk to confirm and issue your sample barcode.'),
+                                  ? 'يعرض هذا القسم العيادات الخارجية فقط؛ ويُرسل الحجز لمساعد الطبيب لتأكيد الموعد.'
+                                  : 'Shows outpatient Clinics only; request goes directly to the clinic assistant.')
+                              : isRadiologyTab
+                                  ? (isAr
+                                      ? 'يعرض هذا القسم مراكز ومعامل الأشعة فقط؛ لتأكيد موعد الأشعة التشخيصية مباشرة.'
+                                      : 'Shows Radiology & Imaging centers only for diagnostic scan bookings.')
+                                  : (isAr
+                                      ? 'يعرض هذا القسم معامل التحاليل الطبية فقط؛ لتأكيد الموعد وإصدار باركود العينة.'
+                                      : 'Shows Medical Analysis Labs only to confirm your booking and issue sample barcode.'),
                           style: AppTypography.labelSm.copyWith(color: cs.onSurface),
                         ),
                       ),
@@ -426,14 +587,18 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                 ),
                 const SizedBox(height: 12),
                 if (_type == AppointmentType.clinic) ...[
-                  Text(isAr ? 'اختر الطبيب والعيادة / المستشفى' : 'Choose Physician & Clinic / Hospital',
-                      style: AppTypography.labelLg.copyWith(color: cs.onSurface)),
+                  Text(
+                    isAr ? 'اختر العيادة والطبيب المعالج' : 'Choose Clinic & Physician',
+                    style: AppTypography.labelLg.copyWith(color: cs.onSurface),
+                  ),
                   const SizedBox(height: 6),
                   TextField(
                     controller: _providerSearchCtrl,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                      hintText: isAr ? 'ابحث باسم الطبيب، التخصص، أو المستشفى/المدينة...' : 'Filter by physician, specialty, or hospital/city...',
+                      hintText: isAr
+                          ? 'ابحث باسم العيادة أو الطبيب أو التخصص...'
+                          : 'Filter by clinic, physician, or specialty...',
                       isDense: true,
                     ),
                     onChanged: (v) => setState(() => _providerSearch = v.trim().toLowerCase()),
@@ -441,21 +606,24 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                   const SizedBox(height: 8),
                   doctorsAsync.when(
                     data: (doctors) {
+                      final clinicDocs = doctors.where((d) => d.isClinicOnly).toList();
                       final filteredDocs = _providerSearch.isEmpty
-                          ? doctors
-                          : doctors
-                              .where((d) => '${d.name.en} ${d.name.ar} ${d.speciality.en} ${d.speciality.ar} ${d.facility.en} ${d.facility.ar}'
-                                  .toLowerCase()
-                                  .contains(_providerSearch))
+                          ? clinicDocs
+                          : clinicDocs
+                              .where((d) =>
+                                  '${d.name.en} ${d.name.ar} ${d.speciality.en} ${d.speciality.ar} ${d.facility.en} ${d.facility.ar}'
+                                      .toLowerCase()
+                                      .contains(_providerSearch))
                               .toList();
-                      final selectedVal = filteredDocs.any((d) => d.id == _doctorId) ? _doctorId : null;
+                      final selectedVal =
+                          filteredDocs.any((d) => d.id == _doctorId) ? _doctorId : null;
                       return DropdownButtonFormField<String>(
                         isExpanded: true,
                         value: selectedVal,
                         hint: Text(
                           filteredDocs.isEmpty
                               ? (isAr ? 'لا توجد عيادة مطابقة للبحث' : 'No matching clinics')
-                              : (isAr ? '— اختر من أطباء مصر المسجلين —' : '— Select Physician & Clinic —'),
+                              : (isAr ? '— اختر من العيادات المعتمدة بمصر —' : '— Select Clinic & Physician —'),
                         ),
                         items: [
                           for (final d in filteredDocs)
@@ -475,21 +643,27 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                     },
                     loading: () => const LinearProgressIndicator(),
                     error: (_, __) => Text(
-                      isAr ? 'تعذر تحميل قائمة الأطباء' : 'Could not load physicians list',
+                      isAr ? 'تعذر تحميل قائمة العيادات' : 'Could not load clinics list',
                       style: AppTypography.labelSm.copyWith(color: cs.error),
                     ),
                   ),
                   const SizedBox(height: 12),
                 ],
-                if (_type == AppointmentType.lab) ...[
-                  Text(isAr ? 'اختر المعمل المسجل بالمنظومة' : 'Choose Registered Laboratory Facility',
-                      style: AppTypography.labelLg.copyWith(color: cs.onSurface)),
+                if (isAnalysisTab || isRadiologyTab) ...[
+                  Text(
+                    isRadiologyTab
+                        ? (isAr ? 'اختر معمل / مركز الأشعة المسجل' : 'Choose Registered Radiology Center')
+                        : (isAr ? 'اختر معمل التحاليل المسجل بالمنظومة' : 'Choose Registered Analysis Laboratory'),
+                    style: AppTypography.labelLg.copyWith(color: cs.onSurface),
+                  ),
                   const SizedBox(height: 6),
                   TextField(
                     controller: _providerSearchCtrl,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                      hintText: isAr ? 'ابحث باسم المعمل أو الفرع أو المحافظة...' : 'Filter by lab name, branch, or city...',
+                      hintText: isRadiologyTab
+                          ? (isAr ? 'ابحث باسم مركز الأشعة أو الفرع...' : 'Filter by radiology center or branch...')
+                          : (isAr ? 'ابحث باسم معمل التحاليل أو الفرع...' : 'Filter by analysis lab name or branch...'),
                       isDense: true,
                     ),
                     onChanged: (v) => setState(() => _providerSearch = v.trim().toLowerCase()),
@@ -497,21 +671,30 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                   const SizedBox(height: 8),
                   labsAsync.when(
                     data: (labs) {
+                      final typeScopedLabs = labs
+                          .where((l) => isRadiologyTab ? l.isRadiology : l.isAnalysis)
+                          .toList();
                       final filteredLabs = _providerSearch.isEmpty
-                          ? labs
-                          : labs
-                              .where((l) => '${l.name.en} ${l.name.ar} ${l.staffName.en} ${l.staffName.ar}'
-                                  .toLowerCase()
-                                  .contains(_providerSearch))
+                          ? typeScopedLabs
+                          : typeScopedLabs
+                              .where((l) =>
+                                  '${l.name.en} ${l.name.ar} ${l.staffName.en} ${l.staffName.ar}'
+                                      .toLowerCase()
+                                      .contains(_providerSearch))
                               .toList();
-                      final selectedLab = filteredLabs.any((l) => l.id == _labId) ? _labId : null;
+                      final selectedLab =
+                          filteredLabs.any((l) => l.id == _labId) ? _labId : null;
                       return DropdownButtonFormField<String>(
                         isExpanded: true,
                         value: selectedLab,
                         hint: Text(
                           filteredLabs.isEmpty
-                              ? (isAr ? 'لا يوجد معمل مطابق للبحث' : 'No matching labs')
-                              : (isAr ? '— اختر من معامل التحاليل المعتمدة بمصر —' : '— Select Registered Egyptian Lab —'),
+                              ? (isRadiologyTab
+                                  ? (isAr ? 'لا يوجد مركز أشعة مطابق للبحث' : 'No matching radiology centers')
+                                  : (isAr ? 'لا يوجد معمل تحاليل مطابق للبحث' : 'No matching analysis labs'))
+                              : (isRadiologyTab
+                                  ? (isAr ? '— اختر من مراكز الأشعة المعتمدة —' : '— Select Registered Radiology Center —')
+                                  : (isAr ? '— اختر من معامل التحاليل المعتمدة —' : '— Select Registered Analysis Lab —')),
                         ),
                         items: [
                           for (final lab in filteredLabs)
@@ -528,18 +711,23 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                     },
                     loading: () => const LinearProgressIndicator(),
                     error: (_, __) => Text(
-                      isAr ? 'تعذر تحميل قائمة المعامل' : 'Could not load laboratories list',
+                      isRadiologyTab
+                          ? (isAr ? 'تعذر تحميل قائمة مراكز الأشعة' : 'Could not load radiology centers list')
+                          : (isAr ? 'تعذر تحميل قائمة معامل التحاليل' : 'Could not load analysis laboratories list'),
                       style: AppTypography.labelSm.copyWith(color: cs.error),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Text(l.testPanelLabel, style: AppTypography.labelLg.copyWith(color: cs.onSurface)),
+                  Text(
+                    isRadiologyTab ? l.radiologyStudyLabel : l.testPanelLabel,
+                    style: AppTypography.labelLg.copyWith(color: cs.onSurface),
+                  ),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      for (final panel in _commonPanels)
+                      for (final panel in (isRadiologyTab ? _commonRadiologyStudies : _commonLabPanels))
                         ActionChip(
                           label: Text(panel, style: AppTypography.labelSm),
                           onPressed: () => setState(() => _testPanelCtrl.text = panel),
@@ -550,7 +738,9 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                   TextField(
                     controller: _testPanelCtrl,
                     maxLength: 120,
-                    decoration: InputDecoration(hintText: l.testPanelHint),
+                    decoration: InputDecoration(
+                      hintText: isRadiologyTab ? l.radiologyStudyHint : l.testPanelHint,
+                    ),
                   ),
                   const SizedBox(height: 8),
                 ],
@@ -582,7 +772,7 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                 if (_type == AppointmentType.clinic && _doctorId != null && _date != null) ...[
                   const SizedBox(height: 10),
                   Text(
-                    isAr ? 'المواعيد المتاحة في جدول الطبيب المختار:' : 'Physician Available Time Slots:',
+                    isAr ? 'المواعيد المتاحة في جدول العيادة المختارة:' : 'Clinic Available Time Slots:',
                     style: AppTypography.labelLg.copyWith(color: cs.onSurface),
                   ),
                   const SizedBox(height: 6),
@@ -622,5 +812,3 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
     );
   }
 }
-
-

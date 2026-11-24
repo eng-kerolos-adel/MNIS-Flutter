@@ -383,18 +383,23 @@ class AppLocalizations {
   String get codeRegenerated =>
       isArabic ? 'تم تحديث البيانات' : 'Data refreshed';
 
-  // -- Appointment type (clinic vs lab) ----------------------------------------
-  String get appointmentTypeClinic => isArabic ? 'كشف عيادة' : 'Clinic visit';
-  String get appointmentTypeLab => isArabic ? 'تحليل معملي' : 'Lab test';
+  // -- Appointment type (clinic vs analysis lab vs radiology) -------------------
+  String get appointmentTypeClinic => isArabic ? 'عيادات' : 'Clinics';
+  String get appointmentTypeLab => isArabic ? 'معامل تحاليل' : 'Lab Tests';
+  String get appointmentTypeRadiology => isArabic ? 'مراكز أشعة' : 'Radiology';
   String get chooseAppointmentType =>
       isArabic ? 'نوع الموعد' : 'Appointment type';
   String get testPanelLabel =>
       isArabic ? 'التحليل المطلوب' : 'Test you need';
   String get testPanelHint =>
       isArabic ? 'مثال: صورة دم كاملة، سكر تراكمي' : 'e.g. Complete Blood Count, HbA1c';
+  String get radiologyStudyLabel =>
+      isArabic ? 'فحص الأشعة المطلوب' : 'Imaging study needed';
+  String get radiologyStudyHint =>
+      isArabic ? 'مثال: أشعة مقطعية، رنين مغناطيسي، سونار' : 'e.g. X-Ray, CT Scan, MRI, Ultrasound';
   String get testPanelRequired => isArabic
-      ? 'اكتب اسم التحليل المطلوب'
-      : 'Enter which test you need';
+      ? 'اكتب اسم التحليل أو الفحص المطلوب'
+      : 'Enter which test or scan you need';
 
   // -- Document uploads ---------------------------------------------------------
   String get myDocuments => isArabic ? 'ملفاتي الطبية' : 'My documents';

@@ -102,7 +102,7 @@ class MnisRepository {
           'reason': reason,
           if (doctorId != null) 'doctorId': doctorId,
           if (labId != null) 'labId': labId,
-          'type': type == AppointmentType.lab ? 'LAB' : 'CLINIC',
+          'type': (type == AppointmentType.lab || type == AppointmentType.radiology) ? 'LAB' : 'CLINIC',
           if (testPanel != null) 'testPanel': testPanel,
         },
         _asMap,

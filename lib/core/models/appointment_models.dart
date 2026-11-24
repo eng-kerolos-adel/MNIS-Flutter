@@ -2,9 +2,19 @@ import 'models.dart';
 
 enum AppointmentStatus { requested, confirmed, rejected, cancelled, completed }
 
-enum AppointmentType { clinic, lab }
+enum AppointmentType { clinic, lab, radiology }
 
-AppointmentType _apptTypeFrom(String raw) => raw == 'LAB' ? AppointmentType.lab : AppointmentType.clinic;
+AppointmentType _apptTypeFrom(Map<String, dynamic> j) {
+  final raw = (j['type'] as String?) ?? 'CLINIC';
+  if (raw != 'LAB') return AppointmentType.clinic;
+  final doc = j['doctor'] is Map ? (j['doctor'] as Map) : null;
+  final specEn = (doc?['specialityEn'] as String? ?? '').toUpperCase();
+  final lic = (doc?['licenseNo'] as String? ?? '').toUpperCase();
+  if (specEn.startsWith('RADIOLOGY') || lic.startsWith('RAD-')) {
+    return AppointmentType.radiology;
+  }
+  return AppointmentType.lab;
+}
 
 AppointmentStatus _apptStatusFrom(String raw) {
   switch (raw) {
@@ -55,7 +65,7 @@ class AppointmentModel {
   factory AppointmentModel.fromJson(Map<String, dynamic> j) =>
       AppointmentModel(
         id: j['id'] as String,
-        type: _apptTypeFrom(j['type'] as String? ?? 'CLINIC'),
+        type: _apptTypeFrom(j),
         preferredDate: parseDate(j['preferredDate']) ?? DateTime.now(),
         reason: (j['reason'] as String?) ?? '',
         testPanel: j['testPanel'] as String?,
@@ -127,13 +137,23 @@ class DoctorOption {
   final Bilingual name;
   final Bilingual speciality;
   final Bilingual facility;
-  const DoctorOption(this.id, this.name, this.speciality, this.facility);
+  final String facilityType;
+  const DoctorOption(
+    this.id,
+    this.name,
+    this.speciality,
+    this.facility, {
+    this.facilityType = 'CLINIC',
+  });
+
+  bool get isClinicOnly => facilityType.toUpperCase() != 'HOSPITAL';
 
   factory DoctorOption.fromJson(Map<String, dynamic> j) => DoctorOption(
         j['id'] as String,
         Bilingual.of({'en': j['fullNameEn'], 'ar': j['fullNameAr']}),
         Bilingual.of({'en': j['specialityEn'], 'ar': j['specialityAr']}),
         Bilingual.of({'en': j['facilityEn'], 'ar': j['facilityAr']}),
+        facilityType: (j['facilityType'] as String?) ?? 'CLINIC',
       );
 }
 
@@ -141,7 +161,16 @@ class LabFacilityOption {
   final String id;
   final Bilingual name;
   final Bilingual staffName;
-  const LabFacilityOption(this.id, this.name, this.staffName);
+  final String labSubType;
+  const LabFacilityOption(
+    this.id,
+    this.name,
+    this.staffName, {
+    this.labSubType = 'ANALYSIS',
+  });
+
+  bool get isRadiology => labSubType.toUpperCase() == 'RADIOLOGY';
+  bool get isAnalysis => !isRadiology;
 
   factory LabFacilityOption.fromJson(Map<String, dynamic> j) => LabFacilityOption(
         j['id'] as String,
@@ -153,6 +182,7 @@ class LabFacilityOption {
           'en': j['staffNameEn'] ?? j['fullNameEn'],
           'ar': j['staffNameAr'] ?? j['fullNameAr'],
         }),
+        labSubType: (j['labSubType'] as String?) ?? 'ANALYSIS',
       );
 }
 
