@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/models/models.dart';
 import '../../../../core/providers/data_providers.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/providers.dart';
@@ -14,6 +14,7 @@ import '../../../../core/utils/shared_widgets.dart';
 import '../../../../core/widgets/account_sheet.dart';
 import '../../../../core/widgets/async_view.dart';
 import '../../../../core/widgets/patient_avatar.dart';
+import '../../../../core/widgets/responsive_center.dart';
 
 class MedicalFileScreen extends ConsumerWidget {
   const MedicalFileScreen({super.key});
@@ -38,6 +39,10 @@ class MedicalFileScreen extends ConsumerWidget {
             await ref.read(profileProvider.future).catchError((_) => null);
           },
           child: CustomScrollView(
+            controller: AppRoutes.tabScrollController(1),
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
             slivers: [
               SliverAppBar(
                 pinned: true,
@@ -79,47 +84,58 @@ class MedicalFileScreen extends ConsumerWidget {
                   children: [
                     if ((profileAsync.value?.allergies.isNotEmpty) ?? false)
                       Container(
+                        width: double.infinity,
                         color: cs.error,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text('MNIS-SEC',
-                                  style: AppTypography.labelSm.copyWith(
-                                      color: cs.onError,
-                                      fontWeight: FontWeight.w700)),
-                            ),
-                            Expanded(
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  Icon(Icons.warning_rounded,
-                                      size: 16, color: cs.onError),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(l.clinicalAlert,
+                        child: ResponsiveCenter(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  children: [
+                                    Icon(Icons.warning_rounded,
+                                        size: 16, color: cs.onError),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        l.clinicalAlert,
                                         style: AppTypography.labelSm.copyWith(
-                                            color: cs.onError,
-                                            fontWeight: FontWeight.w700),
-                                        overflow: TextOverflow.ellipsis),
-                                  ),
-                                ],
+                                          color: cs.onError,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  'MNIS-SEC',
+                                  style: AppTypography.labelSm.copyWith(
+                                    color: cs.onError,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    Padding(
-                      padding: const EdgeInsets.all(14),
+                    ResponsiveCenter(
+                      padding: const EdgeInsets.all(16),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           AsyncValueView<PatientProfile>(
                             value: profileAsync,
@@ -128,7 +144,7 @@ class MedicalFileScreen extends ConsumerWidget {
                             builder: (context, patient) => _PatientCard(
                                 l: l, cs: cs, patient: patient, locale: locale),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           Consumer(builder: (context, ref, _) {
                             final hubAsync = ref.watch(summaryHubProvider);
                             return AsyncValueView<Map<String, dynamic>>(
@@ -142,7 +158,7 @@ class MedicalFileScreen extends ConsumerWidget {
                               ),
                             );
                           }),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           Consumer(builder: (context, ref, _) {
                             final timeline = ref.watch(timelineProvider);
                             return AsyncValueView<List<TimelineEntry>>(
@@ -153,6 +169,7 @@ class MedicalFileScreen extends ConsumerWidget {
                                   l: l, cs: cs, isAr: isAr, locale: locale, entries: entries),
                             );
                           }),
+                          const SizedBox(height: 24),
                         ],
                       ),
                     ),
@@ -184,253 +201,393 @@ class _PatientCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
         boxShadow: [
-          BoxShadow(color: AppColors.primary.withOpacity(0.06), blurRadius: 12),
+          BoxShadow(color: AppColors.primary.withOpacity(0.06), blurRadius: 14),
         ],
       ),
       child: Stack(
         children: [
-          Positioned(
-            left: -16,
+          PositionedDirectional(
+            end: -16,
             bottom: -16,
             child: Icon(Icons.health_and_safety,
                 size: 96, color: cs.primary.withOpacity(0.05)),
           ),
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: cs.error,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
+                // Centered identity hero header
+                Center(
+                  child: Column(
+                    children: [
+                      Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          Text(isAr ? 'فصيلة الدم' : 'Blood',
-                              style: AppTypography.labelSm
-                                  .copyWith(color: cs.onError.withOpacity(0.9))),
-                          Text(patient.bloodType,
-                              style: AppTypography.headlineMd.copyWith(
-                                  color: cs.onError, fontWeight: FontWeight.w700)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Row(
-                            children: [
-                              StatusBadge(
-                                label: patient.insuranceActive
-                                    ? l.officiallyInsured
-                                    : (isAr ? 'غير مؤمَّن' : 'Uninsured'),
-                                backgroundColor: patient.insuranceActive
-                                    ? cs.secondaryContainer.withOpacity(0.4)
-                                    : cs.errorContainer,
-                                textColor: patient.insuranceActive
-                                    ? cs.onSecondaryContainer
-                                    : cs.onErrorContainer,
-                                fontSize: 10,
-                              ),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(patient.fullName.pick(locale),
-                                    style: AppTypography.headlineSm.copyWith(
-                                        color: cs.primary, fontWeight: FontWeight.w700),
-                                    overflow: TextOverflow.ellipsis),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${patient.age} ${isAr ? 'سنة' : 'y'} • '
-                            '${patient.isFemale ? l.femaleLabel : l.maleLabel} • '
-                            '${patient.nationalId}',
-                            style: AppTypography.labelMd
-                                .copyWith(color: cs.onSurfaceVariant),
-                            textAlign: TextAlign.right,
-                            textDirection: TextDirection.ltr,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Stack(
-                      children: [
-                        PatientAvatar(url: patient.photoUrl, size: 56, borderRadius: BorderRadius.circular(28)),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            width: 16,
-                            height: 16,
+                          Container(
+                            padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
-                                color: cs.tertiaryContainer, shape: BoxShape.circle),
-                            child: Icon(Icons.verified,
-                                size: 10, color: cs.onTertiaryContainer),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: cs.primary.withOpacity(0.25),
+                                width: 2,
+                              ),
+                            ),
+                            child: PatientAvatar(
+                              url: patient.photoUrl,
+                              size: 72,
+                              borderRadius: BorderRadius.circular(36),
+                            ),
+                          ),
+                          PositionedDirectional(
+                            bottom: 0,
+                            end: 0,
+                            child: Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: cs.tertiary,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: cs.surface, width: 2),
+                              ),
+                              child: Icon(Icons.verified_rounded,
+                                  size: 12, color: cs.onTertiary),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        patient.fullName.pick(locale),
+                        textAlign: TextAlign.center,
+                        style: AppTypography.headlineMd.copyWith(
+                          color: cs.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Wrap(
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 6,
+                          children: [
+                            Text(
+                              '${patient.age} ${isAr ? 'سنة' : 'y'} • ${patient.isFemale ? l.femaleLabel : l.maleLabel}',
+                              style: AppTypography.labelMd
+                                  .copyWith(color: cs.onSurfaceVariant),
+                            ),
+                            Text('•',
+                                style: AppTypography.labelMd
+                                    .copyWith(color: cs.outline)),
+                            Directionality(
+                              textDirection: TextDirection.ltr,
+                              child: Text(
+                                patient.nationalId,
+                                style: AppTypography.mono.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Balanced symmetrical vital pills (Blood Type + Health Insurance)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: cs.error.withOpacity(0.22)),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.water_drop_rounded,
+                                    size: 14, color: cs.error),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isAr ? 'فصيلة الدم' : 'Blood Type',
+                                  style: AppTypography.labelSm.copyWith(
+                                      color: cs.onErrorContainer),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Directionality(
+                              textDirection: TextDirection.ltr,
+                              child: Text(
+                                patient.bloodType,
+                                style: AppTypography.headlineMd.copyWith(
+                                  color: cs.error,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: patient.insuranceActive
+                              ? cs.tertiaryContainer.withOpacity(0.45)
+                              : cs.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: (patient.insuranceActive
+                                    ? cs.tertiary
+                                    : cs.outline)
+                                .withOpacity(0.25),
                           ),
                         ),
-                      ],
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  patient.insuranceActive
+                                      ? Icons.verified_user_rounded
+                                      : Icons.shield_outlined,
+                                  size: 14,
+                                  color: patient.insuranceActive
+                                      ? cs.tertiary
+                                      : cs.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isAr ? 'التأمين الصحي' : 'Insurance',
+                                  style: AppTypography.labelSm.copyWith(
+                                      color: cs.onSurfaceVariant),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              patient.insuranceActive
+                                  ? l.officiallyInsured
+                                  : (isAr ? 'غير مؤمَّن' : 'Uninsured'),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.labelLg.copyWith(
+                                color: patient.insuranceActive
+                                    ? cs.tertiary
+                                    : cs.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 if (patient.allergies.isNotEmpty) ...[
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: cs.errorContainer,
-                      borderRadius: BorderRadius.circular(10),
+                      color: cs.errorContainer.withOpacity(0.75),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(l.allergyDrugs,
-                                  style: AppTypography.labelSm.copyWith(
-                                      color: cs.onErrorContainer,
-                                      fontWeight: FontWeight.w700)),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                alignment: WrapAlignment.end,
-                                children: patient.allergies
-                                    .map((a) => Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 3),
-                                          decoration: BoxDecoration(
-                                            color: cs.surfaceContainerLowest
-                                                .withOpacity(0.8),
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Text(a.pick(locale),
-                                              style: AppTypography.labelMd.copyWith(
-                                                  color: cs.error,
-                                                  fontWeight: FontWeight.w700)),
-                                        ))
-                                    .toList(),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration:
-                              BoxDecoration(color: cs.error, shape: BoxShape.circle),
-                          child: Icon(Icons.emergency_rounded,
-                              size: 18, color: cs.onError),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                if (patient.chronicConditions.isNotEmpty) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(l.chronicConditions,
-                                  style: AppTypography.labelSm.copyWith(
-                                      color: cs.onSurfaceVariant,
-                                      fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                alignment: WrapAlignment.end,
-                                children: patient.chronicConditions
-                                    .map((c) => Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 3),
-                                          decoration: BoxDecoration(
-                                            color: cs.surfaceContainerLowest,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Text(c.pick(locale),
-                                              style: AppTypography.labelMd
-                                                  .copyWith(color: cs.onSurface)),
-                                        ))
-                                    .toList(),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
                         Container(
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest, shape: BoxShape.circle),
-                          child: Icon(Icons.favorite_rounded,
-                              size: 18, color: cs.onSurfaceVariant),
+                              color: cs.error, shape: BoxShape.circle),
+                          child: Icon(Icons.emergency_rounded,
+                              size: 18, color: cs.onError),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                l.allergyDrugs,
+                                style: AppTypography.labelSm.copyWith(
+                                  color: cs.onErrorContainer,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: patient.allergies
+                                    .map((a) => Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: cs.surfaceContainerLowest
+                                                .withOpacity(0.9),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            a.pick(locale),
+                                            style: AppTypography.labelMd
+                                                .copyWith(
+                                              color: cs.error,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ))
+                                    .toList(),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 10),
                 ],
-                // Emergency hotline — always real & dialable, unlike a made-up
-                // "family doctor" contact the system doesn't actually track.
-                InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () => launchUrl(Uri.parse('tel:137')),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                if (patient.chronicConditions.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: cs.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
+                      border:
+                          Border.all(color: cs.outlineVariant.withOpacity(0.4)),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration:
-                              BoxDecoration(color: cs.primary, shape: BoxShape.circle),
-                          child: Icon(Icons.call_rounded,
-                              size: 16, color: cs.onPrimary),
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: cs.secondaryContainer.withOpacity(0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.favorite_rounded,
+                              size: 18, color: cs.secondary),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(isAr ? 'خط نجدة الإسعاف' : 'Ambulance hotline',
-                                  style: AppTypography.labelSm
-                                      .copyWith(color: cs.outline)),
-                              Text('137',
-                                  style: AppTypography.labelMd.copyWith(
-                                      color: cs.primary, fontWeight: FontWeight.w700)),
+                              Text(
+                                l.chronicConditions,
+                                style: AppTypography.labelSm.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: patient.chronicConditions
+                                    .map((c) => Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: cs.surfaceContainerLowest,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color: cs.outlineVariant
+                                                  .withOpacity(0.4),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            c.pick(locale),
+                                            style: AppTypography.labelMd
+                                                .copyWith(color: cs.onSurface),
+                                          ),
+                                        ))
+                                    .toList(),
+                              ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Icon(Icons.medical_services_rounded,
-                            size: 20, color: cs.secondary),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                Material(
+                  color: cs.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => launchUrl(Uri.parse('tel:137')),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                                color: cs.primary, shape: BoxShape.circle),
+                            child: Icon(Icons.call_rounded,
+                                size: 16, color: cs.onPrimary),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isAr
+                                      ? 'خط نجدة الإسعاف والطوارئ'
+                                      : 'Emergency Ambulance Hotline',
+                                  style: AppTypography.labelSm
+                                      .copyWith(color: cs.outline),
+                                ),
+                                Directionality(
+                                  textDirection: TextDirection.ltr,
+                                  child: Text(
+                                    '137',
+                                    style: AppTypography.labelLg.copyWith(
+                                      color: cs.primary,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.medical_services_rounded,
+                              size: 20, color: cs.secondary),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -502,10 +659,30 @@ class _ClinicalTimeline extends StatelessWidget {
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(l.clinicalTimeline,
-            style: AppTypography.headlineSm.copyWith(color: cs.onSurface)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Row(
+            children: [
+              Icon(Icons.timeline_rounded, size: 18, color: cs.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  l.clinicalTimeline,
+                  style: AppTypography.headlineSm.copyWith(color: cs.onSurface),
+                ),
+              ),
+              if (entries.isNotEmpty)
+                StatusBadge(
+                  label: '${entries.length}',
+                  backgroundColor: cs.primaryContainer.withOpacity(0.25),
+                  textColor: cs.primary,
+                  fontSize: 10,
+                ),
+            ],
+          ),
+        ),
         const SizedBox(height: 12),
         if (entries.isEmpty)
           EmptyState(icon: Icons.timeline_rounded, message: l.noTimelineEvents)
@@ -517,37 +694,6 @@ class _ClinicalTimeline extends StatelessWidget {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerLowest,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            StatusBadge(
-                                label: b.label, backgroundColor: b.bg, textColor: b.fg, fontSize: 10),
-                            Text(df.format(e.date),
-                                style: AppTypography.labelSm
-                                    .copyWith(color: cs.onSurfaceVariant)),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(title(e),
-                            style: AppTypography.headlineSm.copyWith(color: cs.primary),
-                            textAlign: TextAlign.right),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
                 Column(
                   children: [
                     Container(
@@ -563,11 +709,52 @@ class _ClinicalTimeline extends StatelessWidget {
                     if (i < entries.length - 1)
                       Container(
                         width: 2,
-                        height: 40,
-                        color: cs.outlineVariant,
+                        height: 44,
+                        color: cs.outlineVariant.withOpacity(0.7),
                         margin: const EdgeInsets.symmetric(vertical: 4),
                       ),
                   ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(14),
+                      border:
+                          Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              df.format(e.date),
+                              style: AppTypography.labelSm
+                                  .copyWith(color: cs.onSurfaceVariant),
+                            ),
+                            StatusBadge(
+                              label: b.label,
+                              backgroundColor: b.bg,
+                              textColor: b.fg,
+                              fontSize: 10,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          title(e),
+                          textAlign: TextAlign.start,
+                          style: AppTypography.headlineSm
+                              .copyWith(color: cs.primary),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             );
@@ -598,6 +785,36 @@ class _SovereignSummaryHub extends StatelessWidget {
     return const [];
   }
 
+  String _localizedRole(String role) {
+    if (!isAr) return role.replaceAll('_', ' ');
+    return switch (role.toUpperCase()) {
+      'DOCTOR' => 'طبيب معالج',
+      'PHARMACIST' => 'صيدلي',
+      'LAB_TECH' => 'أخصائي معمل',
+      'HOSPITAL_STAFF' => 'طاقم مستشفى',
+      'RECEPTIONIST' => 'استقبال',
+      'ADMIN' => 'إدارة النظام',
+      'EXECUTIVE' => 'متابعة قيادية',
+      _ => role,
+    };
+  }
+
+  String _localizedAction(String action) {
+    final upper = action.toUpperCase();
+    if (!isAr) {
+      return upper.replaceAll('_', ' ').toLowerCase();
+    }
+    if (upper.contains('VIEW') || upper.contains('READ') || upper.contains('GET')) {
+      return 'الاطلاع على السجل الطبي';
+    }
+    if (upper.contains('DISPENSE')) return 'صرف وصفة طبية';
+    if (upper.contains('PRESCR')) return 'تحرير/توثيق روشتة';
+    if (upper.contains('LAB') || upper.contains('SAMPLE')) return 'إجراء/اعتماد فحص معملي';
+    if (upper.contains('SHARE')) return 'مشاركة مؤقتة للملف الطبي';
+    if (upper.contains('ADMIT') || upper.contains('BED')) return 'تسكين/متابعة إقامة داخلية';
+    return action.replaceAll('_', ' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final chronic = _list('chronicAllowances');
@@ -614,47 +831,27 @@ class _SovereignSummaryHub extends StatelessWidget {
       children: [
         // 0. Active Inpatient Bed & Surgical Operations (Hospital / OR)
         if (activeBed != null || surgeries.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.primary.withOpacity(0.35)),
-            ),
+          _SectionCard(
+            cs: cs,
+            icon: Icons.local_hospital_rounded,
+            iconColor: cs.primary,
+            title: isAr
+                ? 'الإقامة الداخلية والعمليات الجراحية'
+                : 'Hospital Inpatient & Surgical Care',
+            accentBorder: true,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      isAr
-                          ? 'الإقامة الداخلية والعمليات الجراحية'
-                          : 'Hospital Inpatient & Surgical Care',
-                      style: AppTypography.headlineSm.copyWith(color: cs.primary),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(Icons.local_hospital_rounded, size: 18, color: cs.primary),
-                  ],
-                ),
-                const SizedBox(height: 8),
                 if (activeBed != null)
                   Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: cs.secondaryContainer.withOpacity(0.45),
-                      borderRadius: BorderRadius.circular(10),
+                      color: cs.secondaryContainer.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        StatusBadge(
-                          label: isAr ? 'مقيم حالياً' : 'ADMITTED',
-                          backgroundColor: cs.primary,
-                          textColor: cs.onPrimary,
-                          fontSize: 10,
-                        ),
                         Expanded(
                           child: Text(
                             isAr
@@ -664,31 +861,32 @@ class _SovereignSummaryHub extends StatelessWidget {
                               color: cs.onSurface,
                               fontWeight: FontWeight.w700,
                             ),
-                            textAlign: TextAlign.right,
+                            textAlign: TextAlign.start,
                           ),
+                        ),
+                        const SizedBox(width: 8),
+                        StatusBadge(
+                          label: isAr ? 'مقيم حالياً' : 'ADMITTED',
+                          backgroundColor: cs.primary,
+                          textColor: cs.onPrimary,
+                          fontSize: 10,
                         ),
                       ],
                     ),
                   ),
                 ...surgeries.map((op) => Container(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: cs.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          StatusBadge(
-                            label: '${op['theaterNo'] ?? 'OR-01'} • ${op['status'] ?? 'SCHEDULED'}',
-                            backgroundColor: cs.tertiaryContainer,
-                            textColor: cs.onTertiaryContainer,
-                            fontSize: 10,
-                          ),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   isAr
@@ -698,17 +896,27 @@ class _SovereignSummaryHub extends StatelessWidget {
                                     color: cs.onSurface,
                                     fontWeight: FontWeight.w700,
                                   ),
-                                  textAlign: TextAlign.right,
+                                  textAlign: TextAlign.start,
                                 ),
+                                const SizedBox(height: 2),
                                 Text(
                                   isAr
                                       ? '${op['surgeonNameAr'] ?? ''} • ${op['anaesthesiaAr'] ?? ''}'
                                       : '${op['surgeonNameEn'] ?? ''} • ${op['anaesthesiaEn'] ?? ''}',
-                                  style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant),
-                                  textAlign: TextAlign.right,
+                                  style: AppTypography.labelSm
+                                      .copyWith(color: cs.onSurfaceVariant),
+                                  textAlign: TextAlign.start,
                                 ),
                               ],
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          StatusBadge(
+                            label:
+                                '${op['theaterNo'] ?? 'OR-01'} • ${op['status'] ?? 'SCHEDULED'}',
+                            backgroundColor: cs.tertiaryContainer,
+                            textColor: cs.onTertiaryContainer,
+                            fontSize: 10,
                           ),
                         ],
                       ),
@@ -716,125 +924,142 @@ class _SovereignSummaryHub extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
         ],
-        // 1. Monthly Chronic Medication Allowances
+
+        // 1. Monthly Chronic Medication Allowances (with clean quota bar)
         if (chronic.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+          _SectionCard(
+            cs: cs,
+            icon: Icons.medication_liquid_rounded,
+            iconColor: cs.secondary,
+            title: isAr
+                ? 'حصص الأدوية المزمنة الشهرية'
+                : 'Monthly Chronic Drug Allowances',
+            trailing: StatusBadge(
+              label: '${chronic.length}',
+              backgroundColor: cs.secondaryContainer.withOpacity(0.5),
+              textColor: cs.onSecondaryContainer,
+              fontSize: 10,
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      isAr
-                          ? 'حصص الأدوية المزمنة الشهرية (${chronic.length})'
-                          : 'Monthly Chronic Drug Allowances (${chronic.length})',
-                      style: AppTypography.headlineSm.copyWith(color: cs.primary),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(Icons.medication_liquid_rounded, size: 18, color: cs.secondary),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ...chronic.map((c) {
-                  final limit = (c['monthlyLimit'] as num?)?.toInt() ?? 1;
-                  final used = (c['dispensedThisMonth'] as num?)?.toInt() ?? 0;
-                  final remaining = (limit - used).clamp(0, 999);
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        StatusBadge(
-                          label: isAr
-                              ? 'متبقي $remaining من $limit'
-                              : '$remaining / $limit left',
-                          backgroundColor: remaining > 0
-                              ? cs.tertiaryContainer
-                              : cs.errorContainer,
-                          textColor: remaining > 0
-                              ? cs.onTertiaryContainer
-                              : cs.onErrorContainer,
-                          fontSize: 10,
-                        ),
-                        Expanded(
-                          child: Text(
-                            '${c['drugName'] ?? ''} • ${c['dosage'] ?? ''}',
-                            style: AppTypography.labelMd.copyWith(
-                              color: cs.onSurface,
-                              fontWeight: FontWeight.w700,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: chronic.map((c) {
+                final limit = ((c['monthlyLimit'] as num?)?.toInt() ?? 1).clamp(1, 999);
+                final used = ((c['dispensedThisMonth'] as num?)?.toInt() ?? 0).clamp(0, limit);
+                final remaining = (limit - used).clamp(0, 999);
+                final ratio = (remaining / limit).clamp(0.0, 1.0);
+                final barColor = remaining > 0 ? cs.tertiary : cs.error;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(12),
+                    border:
+                        Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: cs.secondaryContainer.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            textAlign: TextAlign.right,
+                            child: Icon(Icons.medication_rounded,
+                                size: 17, color: cs.secondary),
                           ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${c['drugName'] ?? ''}',
+                                  style: AppTypography.labelLg.copyWith(
+                                    color: cs.onSurface,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  textAlign: TextAlign.start,
+                                ),
+                                if ((c['dosage'] ?? '').toString().isNotEmpty)
+                                  Text(
+                                    '${c['dosage']}',
+                                    style: AppTypography.labelSm
+                                        .copyWith(color: cs.onSurfaceVariant),
+                                    textAlign: TextAlign.start,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          StatusBadge(
+                            label: isAr
+                                ? 'متبقي $remaining / $limit'
+                                : '$remaining / $limit left',
+                            backgroundColor: remaining > 0
+                                ? cs.tertiaryContainer.withOpacity(0.6)
+                                : cs.errorContainer,
+                            textColor: remaining > 0
+                                ? cs.onTertiaryContainer
+                                : cs.onErrorContainer,
+                            fontSize: 10,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: LinearProgressIndicator(
+                          value: ratio,
+                          minHeight: 5,
+                          backgroundColor: cs.outlineVariant.withOpacity(0.35),
+                          valueColor: AlwaysStoppedAnimation<Color>(barColor),
                         ),
-                      ],
-                    ),
-                  );
-                }),
-              ],
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
         ],
 
         // 2. Clinical Referrals & PACS Radiology
         if (referrals.isNotEmpty || radiology.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
-            ),
+          _SectionCard(
+            cs: cs,
+            icon: Icons.hub_rounded,
+            iconColor: cs.tertiary,
+            title: isAr
+                ? 'التحويلات الطبية وتقارير الأشعة (PACS)'
+                : 'Clinical Referrals & PACS Radiology',
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      isAr
-                          ? 'التحويلات الطبية وتقارير الأشعة (PACS)'
-                          : 'Clinical Referrals & PACS Radiology',
-                      style: AppTypography.headlineSm.copyWith(color: cs.primary),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(Icons.hub_rounded, size: 18, color: cs.tertiary),
-                  ],
-                ),
-                const SizedBox(height: 8),
                 ...referrals.map((r) => Container(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: cs.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          StatusBadge(
-                            label: '${r['urgency'] ?? 'ROUTINE'} • ${r['status'] ?? 'PENDING'}',
-                            backgroundColor: cs.secondaryContainer,
-                            textColor: cs.onSecondaryContainer,
-                            fontSize: 10,
-                          ),
+                          Icon(Icons.compare_arrows_rounded,
+                              size: 18, color: cs.secondary),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   '${isAr ? "تحويل إلى:" : "Referral to:"} ${r['targetFacility'] ?? r['targetType'] ?? ''}',
@@ -842,40 +1067,45 @@ class _SovereignSummaryHub extends StatelessWidget {
                                     color: cs.onSurface,
                                     fontWeight: FontWeight.w700,
                                   ),
-                                  textAlign: TextAlign.right,
+                                  textAlign: TextAlign.start,
                                 ),
-                                Text(
-                                  '${r['reason'] ?? ''}',
-                                  style: AppTypography.labelSm.copyWith(
-                                    color: cs.onSurfaceVariant,
+                                if ((r['reason'] ?? '').toString().isNotEmpty)
+                                  Text(
+                                    '${r['reason']}',
+                                    style: AppTypography.labelSm
+                                        .copyWith(color: cs.onSurfaceVariant),
+                                    textAlign: TextAlign.start,
                                   ),
-                                  textAlign: TextAlign.right,
-                                ),
                               ],
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          StatusBadge(
+                            label:
+                                '${r['urgency'] ?? 'ROUTINE'} • ${r['status'] ?? 'PENDING'}',
+                            backgroundColor: cs.secondaryContainer,
+                            textColor: cs.onSecondaryContainer,
+                            fontSize: 10,
                           ),
                         ],
                       ),
                     )),
                 ...radiology.map((rad) => Container(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: cs.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          StatusBadge(
-                            label: '${rad['modality'] ?? 'PACS'}',
-                            backgroundColor: cs.tertiaryContainer,
-                            textColor: cs.onTertiaryContainer,
-                            fontSize: 10,
-                          ),
+                          Icon(Icons.radar_rounded,
+                              size: 18, color: cs.tertiary),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   '${isAr ? "أشعة:" : "Scan:"} ${rad['bodyPart'] ?? ''}',
@@ -883,17 +1113,24 @@ class _SovereignSummaryHub extends StatelessWidget {
                                     color: cs.onSurface,
                                     fontWeight: FontWeight.w700,
                                   ),
-                                  textAlign: TextAlign.right,
+                                  textAlign: TextAlign.start,
                                 ),
-                                Text(
-                                  '${rad['findings'] ?? ''}',
-                                  style: AppTypography.labelSm.copyWith(
-                                    color: cs.onSurfaceVariant,
+                                if ((rad['findings'] ?? '').toString().isNotEmpty)
+                                  Text(
+                                    '${rad['findings']}',
+                                    style: AppTypography.labelSm
+                                        .copyWith(color: cs.onSurfaceVariant),
+                                    textAlign: TextAlign.start,
                                   ),
-                                  textAlign: TextAlign.right,
-                                ),
                               ],
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          StatusBadge(
+                            label: '${rad['modality'] ?? 'PACS'}',
+                            backgroundColor: cs.tertiaryContainer,
+                            textColor: cs.onTertiaryContainer,
+                            fontSize: 10,
                           ),
                         ],
                       ),
@@ -901,86 +1138,198 @@ class _SovereignSummaryHub extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
         ],
 
-        // 3. Sovereign Security Access Log
+        // 3. Sovereign Security Access Log — completely redesigned for clean AR & EN layout
         if (accessLogs.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+          _SectionCard(
+            cs: cs,
+            icon: Icons.shield_rounded,
+            iconColor: cs.primary,
+            title: isAr
+                ? 'سجل الرقابة السيادي للملف الطبي'
+                : 'Sovereign Medical Record Audit Trail',
+            subtitle: isAr
+                ? 'جميع عمليات الاطلاع على ملفك مسجلة ومشفرة'
+                : 'Encrypted, tamper-evident record access log',
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withOpacity(0.22),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'AES-256',
+                style: AppTypography.mono.copyWith(
+                  color: cs.primary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded( 
-                        child:
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: cs.primaryContainer,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: 
-                      Text(
-                        'AES-256-GCM • AUDIT',
-                        style: AppTypography.labelSm.copyWith(
-                          color: cs.onPrimaryContainer,
-                          fontWeight: FontWeight.w700,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: accessLogs.take(4).map((log) {
+                final actor = isAr
+                    ? ((log['actorNameAr'] as String?) ??
+                        (log['actorNameEn'] as String?) ??
+                        'MNIS')
+                    : ((log['actorNameEn'] as String?) ??
+                        (log['actorNameAr'] as String?) ??
+                        'MNIS');
+                final rawRole = (log['actorRole'] ?? 'SYSTEM').toString();
+                final rawAction = (log['action'] ?? '').toString();
+                final at = DateTime.tryParse(
+                    (log['createdAt'] ?? log['at'] ?? '').toString());
+                final timeLabel = at != null
+                    ? DateFormat.MMMd(isAr ? 'ar' : 'en').add_Hm().format(at)
+                    : '';
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer.withOpacity(0.2),
+                          shape: BoxShape.circle,
                         ),
+                        child: Icon(Icons.verified_user_outlined,
+                            size: 16, color: cs.primary),
                       ),
-                    ),),
-                    Row(
-                      children: [
-                        Text(
-                          isAr
-                              ? 'سجل الرقابة السيادي للملف الطبي'
-                              : 'Sovereign Medical Record Audit Trail',
-                          style: AppTypography.headlineSm.copyWith(color: cs.primary),
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(Icons.shield_rounded, size: 18, color: cs.primary),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ...accessLogs.take(4).map((log) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '${log['actorRole'] ?? 'SYSTEM'}',
-                            style: AppTypography.labelSm.copyWith(
-                              color: cs.secondary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              '${log['actorNameAr'] ?? log['actorNameEn'] ?? ''} — ${log['action'] ?? ''}',
-                              style: AppTypography.labelSm.copyWith(
-                                color: cs.onSurfaceVariant,
-                              ),
-                              textAlign: TextAlign.right,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              actor,
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
+                              style: AppTypography.labelMd.copyWith(
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                        ],
+                            Text(
+                              timeLabel.isNotEmpty
+                                  ? '${_localizedAction(rawAction)} • $timeLabel'
+                                  : _localizedAction(rawAction),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.labelSm
+                                  .copyWith(color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
                       ),
-                    )),
-              ],
+                      const SizedBox(width: 8),
+                      StatusBadge(
+                        label: _localizedRole(rawRole),
+                        backgroundColor: cs.secondaryContainer.withOpacity(0.45),
+                        textColor: cs.onSecondaryContainer,
+                        fontSize: 10,
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
             ),
           ),
         ],
       ],
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  final ColorScheme cs;
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final Widget child;
+  final bool accentBorder;
+
+  const _SectionCard({
+    required this.cs,
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    required this.child,
+    this.accentBorder = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: accentBorder
+              ? cs.primary.withOpacity(0.35)
+              : cs.outlineVariant.withOpacity(0.45),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 18, color: iconColor),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style:
+                          AppTypography.headlineSm.copyWith(color: cs.primary),
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        style: AppTypography.labelSm
+                            .copyWith(color: cs.onSurfaceVariant),
+                      ),
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 8),
+                trailing!,
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
     );
   }
 }

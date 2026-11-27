@@ -31,6 +31,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loading = false;
   bool _deviceSupportsBiometric = false;
   bool _hasStoredBiometric = false;
+  BiometricCapabilities _bioCaps = const BiometricCapabilities(
+    available: false,
+    hasFace: false,
+    hasFingerprint: false,
+  );
   final _localAuth = LocalAuthentication();
 
   @override
@@ -45,18 +50,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         setState(() {
           _deviceSupportsBiometric = false;
           _hasStoredBiometric = false;
+          _bioCaps = const BiometricCapabilities(
+            available: false,
+            hasFace: false,
+            hasFingerprint: false,
+          );
         });
       }
       return;
     }
     try {
-      final supported = await isBiometricHardwareAvailable(_localAuth);
+      final caps = await getBiometricCapabilities(_localAuth);
       final hasStoredBiometric =
           await SecureSessionStore.instance.hasBiometricCredentials();
       if (mounted) {
         setState(() {
-          _deviceSupportsBiometric = supported;
+          _deviceSupportsBiometric = caps.available;
           _hasStoredBiometric = hasStoredBiometric;
+          _bioCaps = caps;
         });
       }
     } catch (_) {
@@ -114,16 +125,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (_loading) return;
     final isAr = _isAr;
     final l = AppLocalizations.of(context);
+    final bioLabel = _bioCaps.label(isAr);
     if (!_hasStoredBiometric) {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          icon: const Icon(Icons.fingerprint_rounded, size: 36),
-          title: Text(l.fingerprintLogin),
+          icon: Icon(
+            _bioCaps.hasFace && !_bioCaps.hasFingerprint
+                ? Icons.face_rounded
+                : Icons.fingerprint_rounded,
+            size: 36,
+          ),
+          title: Text(bioLabel),
           content: Text(
             isAr
-                ? 'لتفعيل الدخول بالبصمة، سجّل دخولك أولاً بالرقم القومي وكلمة المرور وأتمّ التحقق عبر SMS، وبعدها ستظهر لك نافذة تفعيل البصمة مباشرة.'
-                : 'To activate fingerprint sign-in, first sign in once with your National ID and password and complete SMS verification. You will be prompted to enable biometrics immediately.',
+                ? 'لتفعيل الدخول عبر ($bioLabel)، سجّل دخولك أولاً بالرقم القومي وكلمة المرور وأتمّ التحقق عبر SMS، وبعدها ستظهر لك نافذة التفعيل البيومتري مباشرة.'
+                : 'To activate $bioLabel sign-in, first sign in once with your National ID and password and complete SMS verification. You will be prompted to enable biometrics immediately.',
           ),
           actions: [
             FilledButton(
@@ -139,8 +156,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final ok = await authenticateWithBiometrics(
       _localAuth,
       reason: isAr
-          ? 'استخدم بصمتك لتسجيل الدخول إلى MNIS'
-          : 'Use your fingerprint to sign in to MNIS',
+          ? 'استخدم $bioLabel لتسجيل الدخول إلى MNIS'
+          : 'Use $bioLabel to sign in to MNIS',
     );
     if (!mounted) return;
     if (!ok) {
@@ -346,8 +363,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       color: cs.surfaceContainerLowest,
                                       borderRadius: BorderRadius.circular(10),
                                     ),
-                                    child: Icon(Icons.fingerprint_rounded,
-                                        size: 28, color: cs.secondary),
+                                    child: Icon(
+                                      _bioCaps.hasFace && !_bioCaps.hasFingerprint
+                                          ? Icons.face_rounded
+                                          : Icons.fingerprint_rounded,
+                                      size: 28,
+                                      color: cs.secondary,
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -355,14 +377,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.end,
                                       children: [
-                                        Text(l.fingerprintLogin,
-                                            style: AppTypography.headlineSm
-                                                .copyWith(color: cs.onSurface)),
-                                        Text(l.fingerprintSub,
-                                            style: AppTypography.labelSm
-                                                .copyWith(
-                                                    color:
-                                                        cs.onSurfaceVariant)),
+                                        Text(
+                                          _bioCaps.hasFace || _bioCaps.hasFingerprint
+                                              ? (_isAr
+                                                  ? 'الدخول بـ ${_bioCaps.label(true)}'
+                                                  : 'Sign in with ${_bioCaps.label(false)}')
+                                              : l.fingerprintLogin,
+                                          style: AppTypography.headlineSm
+                                              .copyWith(color: cs.onSurface),
+                                        ),
+                                        Text(
+                                          _isAr
+                                              ? 'دعم البصمة والتعرف على الوجه (Face Unlock)'
+                                              : 'Supports Fingerprint & Face Unlock',
+                                          style: AppTypography.labelSm.copyWith(
+                                              color: cs.onSurfaceVariant),
+                                        ),
                                       ],
                                     ),
                                   ),

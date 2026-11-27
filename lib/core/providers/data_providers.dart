@@ -49,6 +49,12 @@ final prescriptionsProvider =
   return ref.watch(repositoryProvider).prescriptions();
 });
 
+final medicationRemindersProvider =
+    FutureProvider.autoDispose<List<MedicationReminderModel>>((ref) async {
+  ref.watch(_uidProvider);
+  return ref.watch(repositoryProvider).medicationReminders();
+});
+
 final labResultsProvider =
     FutureProvider.autoDispose<List<LabResultPanel>>((ref) async {
   ref.watch(_uidProvider);
@@ -66,14 +72,38 @@ final appointmentsProvider =
   return ref.watch(repositoryProvider).appointments();
 });
 
+typedef GeoScopeArgs = ({double? lat, double? lng, String? governorate, bool strictGeo});
+
 final doctorsProvider = FutureProvider.autoDispose<List<DoctorOption>>((ref) async {
   ref.watch(_uidProvider);
   return ref.watch(repositoryProvider).doctors();
 });
 
+final geoDoctorsProvider = FutureProvider.autoDispose
+    .family<List<DoctorOption>, GeoScopeArgs>((ref, args) async {
+  ref.watch(_uidProvider);
+  return ref.watch(repositoryProvider).doctors(
+        lat: args.lat,
+        lng: args.lng,
+        governorate: args.governorate,
+        strictGeo: args.strictGeo,
+      );
+});
+
 final labsProvider = FutureProvider.autoDispose<List<LabFacilityOption>>((ref) async {
   ref.watch(_uidProvider);
   return ref.watch(repositoryProvider).labs();
+});
+
+final geoLabsProvider = FutureProvider.autoDispose
+    .family<List<LabFacilityOption>, GeoScopeArgs>((ref, args) async {
+  ref.watch(_uidProvider);
+  return ref.watch(repositoryProvider).labs(
+        lat: args.lat,
+        lng: args.lng,
+        governorate: args.governorate,
+        strictGeo: args.strictGeo,
+      );
 });
 
 final documentsProvider = FutureProvider.autoDispose<List<DocumentModel>>((ref) async {

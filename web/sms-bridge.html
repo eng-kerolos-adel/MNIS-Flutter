@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MNIS SMS Verification</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #F6F8FC;
+      color: #0F172A;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    body.dark {
+      background: #0F172A;
+      color: #F8FAFC;
+    }
+    .status-wrap {
+      text-align: center;
+      padding: 24px;
+      max-width: 340px;
+    }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      margin: 0 auto 14px;
+      border: 3px solid rgba(0, 137, 123, 0.22);
+      border-top-color: #00897B;
+      border-radius: 50%;
+      animation: spin 0.85s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0A2647;
+      margin-bottom: 6px;
+    }
+    body.dark .title { color: #E2E8F0; }
+    .sub {
+      font-size: 13px;
+      color: #64748B;
+      line-height: 1.5;
+    }
+    body.dark .sub { color: #94A3B8; }
+    .grecaptcha-badge { visibility: hidden !important; }
+  </style>
+</head>
+<body>
+  <div class="status-wrap" id="status-box">
+    <div class="spinner"></div>
+    <div class="title" id="status-title">جاري التحقق الأمني لإرسال رسالة SMS...</div>
+    <div class="sub" id="status-sub">يرجى إتمام التحقق الظاهر إن طُلب، دون مغادرة التطبيق.</div>
+  </div>
+  <div id="recaptcha-container"></div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js';
+    import {
+      getAuth,
+      RecaptchaVerifier,
+      signInWithPhoneNumber,
+      signOut,
+    } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
+
+    const params = new URLSearchParams(window.location.search);
+    const initialLang = params.get('lang') === 'en' ? 'en' : 'ar';
+    if (params.get('dark') === '1') {
+      document.body.classList.add('dark');
+    }
+    document.documentElement.lang = initialLang;
+    document.documentElement.dir = initialLang === 'ar' ? 'rtl' : 'ltr';
+    if (initialLang === 'en') {
+      document.getElementById('status-title').textContent = 'Verifying request to send SMS...';
+      document.getElementById('status-sub').textContent = 'Please complete any security prompt inside MNIS.';
+    }
+
+    const firebaseConfig = {
+      apiKey: 'AIzaSyC-D89IBFC6Ad1XGq3zeWcNdpFUUhDNKDM',
+      authDomain: 'mnis-egypt-dev.firebaseapp.com',
+      projectId: 'mnis-egypt-dev',
+      storageBucket: 'mnis-egypt-dev.firebasestorage.app',
+      messagingSenderId: '994868849909',
+      appId: '1:994868849909:web:e340a60fe0d820a27b29bc',
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    let confirmationResult = null;
+    let recaptchaVerifier = null;
+    let sendingActive = false;
+    let lastChallengeVisible = false;
+
+    function postToApp(payload) {
+      try {
+        if (window.MnisSmsBridge && typeof window.MnisSmsBridge.postMessage === 'function') {
+          window.MnisSmsBridge.postMessage(JSON.stringify(payload));
+        }
+      } catch (_) {}
+    }
+
+    function setChallengeVisible(visible) {
+      if (lastChallengeVisible === visible) return;
+      lastChallengeVisible = visible;
+      postToApp({ type: 'challengeVisible', visible });
+    }
+
+    function detectInteractiveChallenge() {
+      if (!sendingActive) return false;
+      const frames = document.querySelectorAll('iframe');
+      for (const frame of frames) {
+        const src = frame.getAttribute('src') || '';
+        if (!src.includes('recaptcha') || !src.includes('bframe')) continue;
+        const rect = frame.getBoundingClientRect();
+        if (rect.width < 120 || rect.height < 120) continue;
+        let el = frame;
+        let hidden = false;
+        while (el && el !== document.body && el !== document.documentElement) {
+          const st = window.getComputedStyle(el);
+          if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0) {
+            hidden = true;
+            break;
+          }
+          el = el.parentElement;
+        }
+        if (!hidden) return true;
+      }
+      return false;
+    }
+
+    const observer = new MutationObserver(() => {
+      if (!sendingActive) return;
+      setChallengeVisible(detectInteractiveChallenge());
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class', 'hidden'],
+    });
+    setInterval(() => {
+      if (sendingActive) {
+        setChallengeVisible(detectInteractiveChallenge());
+      } else if (lastChallengeVisible) {
+        setChallengeVisible(false);
+      }
+    }, 350);
+
+    function clearVerifier() {
+      if (recaptchaVerifier) {
+        try { recaptchaVerifier.clear(); } catch (_) {}
+        recaptchaVerifier = null;
+      }
+      const container = document.getElementById('recaptcha-container');
+      if (container) container.innerHTML = '';
+    }
+
+    window.mnisReset = async function () {
+      sendingActive = false;
+      confirmationResult = null;
+      setChallengeVisible(false);
+      clearVerifier();
+      try { await signOut(auth); } catch (_) {}
+    };
+
+    window.mnisSendSms = async function (phoneE164, lang) {
+      sendingActive = true;
+      confirmationResult = null;
+      setChallengeVisible(false);
+      clearVerifier();
+      try {
+        auth.languageCode = lang === 'en' ? 'en' : 'ar';
+        recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          size: 'invisible',
+          callback: () => {
+            postToApp({ type: 'recaptchaSolved' });
+          },
+          'expired-callback': () => {
+            setChallengeVisible(false);
+            postToApp({ type: 'recaptchaExpired' });
+          },
+        });
+
+        confirmationResult = await signInWithPhoneNumber(auth, phoneE164, recaptchaVerifier);
+        sendingActive = false;
+        setChallengeVisible(false);
+        postToApp({ type: 'codeSent' });
+      } catch (err) {
+        sendingActive = false;
+        setChallengeVisible(false);
+        clearVerifier();
+        postToApp({
+          type: 'error',
+          code: (err && err.code) ? String(err.code) : 'unknown',
+          message: (err && err.message) ? String(err.message) : String(err),
+        });
+      }
+    };
+
+    window.mnisConfirmOtp = async function (code) {
+      try {
+        if (!confirmationResult) {
+          postToApp({
+            type: 'verifyError',
+            code: 'session-expired',
+            message: 'Missing active confirmation session.',
+          });
+          return;
+        }
+        const cred = await confirmationResult.confirm(String(code).trim());
+        const idToken = await cred.user.getIdToken(true);
+        postToApp({ type: 'verified', idToken });
+      } catch (err) {
+        postToApp({
+          type: 'verifyError',
+          code: (err && err.code) ? String(err.code) : 'invalid-verification-code',
+          message: (err && err.message) ? String(err.message) : String(err),
+        });
+      }
+    };
+
+    postToApp({ type: 'ready' });
+  </script>
+</body>
+</html>

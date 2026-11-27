@@ -470,3 +470,66 @@ class AppNotification {
         data: j['data'] as Map<String, dynamic>? ?? {},
       );
 }
+
+class MedicationReminderModel {
+  final String id;
+  final String prescriptionId;
+  final String prescriptionItemId;
+  final Bilingual drugName;
+  final String dose;
+  final Bilingual frequency;
+  final int timesPerDay;
+  final int intervalHours;
+  final List<String> scheduleTimes;
+  final int durationDays;
+  final DateTime startsAt;
+  final DateTime endsAt;
+  final bool isActive;
+  final DateTime? lastTakenAt;
+  final int dosesTakenCount;
+
+  const MedicationReminderModel({
+    required this.id,
+    required this.prescriptionId,
+    required this.prescriptionItemId,
+    required this.drugName,
+    required this.dose,
+    required this.frequency,
+    required this.timesPerDay,
+    required this.intervalHours,
+    required this.scheduleTimes,
+    required this.durationDays,
+    required this.startsAt,
+    required this.endsAt,
+    required this.isActive,
+    required this.lastTakenAt,
+    required this.dosesTakenCount,
+  });
+
+  int get daysRemaining {
+    final diff = endsAt.difference(DateTime.now()).inDays;
+    return diff < 0 ? 0 : diff + 1;
+  }
+
+  factory MedicationReminderModel.fromJson(Map<String, dynamic> j) =>
+      MedicationReminderModel(
+        id: j['id'] as String,
+        prescriptionId: (j['prescriptionId'] as String?) ?? '',
+        prescriptionItemId: (j['prescriptionItemId'] as String?) ?? '',
+        drugName: Bilingual.of({'en': j['drugNameEn'], 'ar': j['drugNameAr']}),
+        dose: (j['dose'] as String?) ?? '',
+        frequency:
+            Bilingual.of({'en': j['frequencyEn'], 'ar': j['frequencyAr']}),
+        timesPerDay: (j['timesPerDay'] as num?)?.toInt() ?? 1,
+        intervalHours: (j['intervalHours'] as num?)?.toInt() ?? 24,
+        scheduleTimes: (j['scheduleTimes'] as List? ?? ['09:00'])
+            .map((e) => e.toString())
+            .toList(),
+        durationDays: (j['durationDays'] as num?)?.toInt() ?? 7,
+        startsAt: parseDate(j['startsAt']) ?? DateTime.now(),
+        endsAt: parseDate(j['endsAt']) ?? DateTime.now(),
+        isActive: (j['isActive'] as bool?) ?? true,
+        lastTakenAt: parseDate(j['lastTakenAt']),
+        dosesTakenCount: (j['dosesTakenCount'] as num?)?.toInt() ?? 0,
+      );
+}

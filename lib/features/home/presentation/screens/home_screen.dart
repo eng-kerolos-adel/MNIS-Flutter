@@ -17,6 +17,7 @@ import '../../../../core/utils/shared_widgets.dart';
 import '../../../../core/widgets/account_sheet.dart';
 import '../../../../core/widgets/async_view.dart';
 import '../../../../core/widgets/patient_avatar.dart';
+import '../../../../core/widgets/responsive_center.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -46,6 +47,10 @@ class HomeScreen extends ConsumerWidget {
             await ref.read(profileProvider.future).catchError((_) => null);
           },
           child: CustomScrollView(
+            controller: AppRoutes.tabScrollController(0),
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
             slivers: [
               SliverAppBar(
                 pinned: true,
@@ -85,7 +90,8 @@ class HomeScreen extends ConsumerWidget {
                         child: Icon(Icons.notifications_outlined,
                             color: cs.onSurfaceVariant),
                       ),
-                      onPressed: () => context.push(AppRoutes.notifications),
+                      onPressed: () =>
+                          AppRoutes.navigate(context, AppRoutes.notifications),
                     );
                   }),
                   IconButton(
@@ -133,77 +139,85 @@ class HomeScreen extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    const SizedBox(height: 12),
-                    _GreetingBar(l: l, cs: cs, isAr: isAr, profileAsync: profileAsync),
-                    if (profileAsync.value?.phone != null &&
-                        !(profileAsync.value?.isPhoneVerified ?? false)) ...[
-                      const SizedBox(height: 12),
-                      _PhoneVerificationBanner(
-                        cs: cs,
-                        isAr: isAr,
-                        phoneMasked: profileAsync.value?.phoneMasked ??
-                            profileAsync.value?.phone ??
-                            '',
-                        onTap: () => context.push(AppRoutes.verifyPhone),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    AsyncValueView<PatientProfile>(
-                      value: profileAsync,
-                      isAr: isAr,
-                      onRetry: () => ref.invalidate(profileProvider),
-                      builder: (context, patient) =>
-                          _MedicalIdentityCard(l: l, cs: cs, patient: patient, locale: locale),
-                    ),
-                    Consumer(builder: (context, ref, _) {
-                      final hubAsync = ref.watch(summaryHubProvider);
-                      final ticket = hubAsync.value?['activeQueueTicket'];
-                      if (ticket is! Map<String, dynamic>) {
-                        return const SizedBox.shrink();
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 16),
-                        child: _LiveQueueTicketCard(
-                          cs: cs,
-                          isAr: isAr,
-                          ticket: ticket,
-                          onRefresh: () => ref.invalidate(summaryHubProvider),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 16),
-                    Consumer(builder: (context, ref, _) {
-                      final stats = ref.watch(dashboardStatsProvider);
-                      return AsyncValueView<DashboardStats>(
-                        value: stats,
-                        isAr: isAr,
-                        loadingHeight: 96,
-                        onRetry: () => ref.invalidate(dashboardStatsProvider),
-                        builder: (context, s) =>
-                            _QuickStats(l: l, cs: cs, isAr: isAr, stats: s),
-                      );
-                    }),
-                    const SizedBox(height: 16),
-                    _QuickAccessGrid(l: l, cs: cs),
-                    const SizedBox(height: 16),
-                    AsyncValueView<PatientProfile>(
-                      value: profileAsync,
-                      isAr: isAr,
-                      loadingHeight: 96,
-                      builder: (context, patient) => Consumer(builder: (context, ref, _) {
-                        final timeline = ref.watch(timelineProvider);
-                        return AsyncValueView<List<TimelineEntry>>(
-                          value: timeline,
-                          isAr: isAr,
-                          loadingHeight: 96,
-                          builder: (context, entries) => _RecentActivity(
-                            l: l, cs: cs, isAr: isAr, locale: locale,
-                            entries: entries, patient: patient,
+                    ResponsiveCenter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: 12),
+                          _GreetingBar(l: l, cs: cs, isAr: isAr, profileAsync: profileAsync),
+                          if (profileAsync.value?.phone != null &&
+                              !(profileAsync.value?.isPhoneVerified ?? false)) ...[
+                            const SizedBox(height: 12),
+                            _PhoneVerificationBanner(
+                              cs: cs,
+                              isAr: isAr,
+                              phoneMasked: profileAsync.value?.phoneMasked ??
+                                  profileAsync.value?.phone ??
+                                  '',
+                              onTap: () =>
+                                  AppRoutes.navigate(context, AppRoutes.verifyPhone),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          AsyncValueView<PatientProfile>(
+                            value: profileAsync,
+                            isAr: isAr,
+                            onRetry: () => ref.invalidate(profileProvider),
+                            builder: (context, patient) =>
+                                _MedicalIdentityCard(l: l, cs: cs, patient: patient, locale: locale),
                           ),
-                        );
-                      }),
+                          Consumer(builder: (context, ref, _) {
+                            final hubAsync = ref.watch(summaryHubProvider);
+                            final ticket = hubAsync.value?['activeQueueTicket'];
+                            if (ticket is! Map<String, dynamic>) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 16),
+                              child: _LiveQueueTicketCard(
+                                cs: cs,
+                                isAr: isAr,
+                                ticket: ticket,
+                                onRefresh: () => ref.invalidate(summaryHubProvider),
+                              ),
+                            );
+                          }),
+                          const SizedBox(height: 16),
+                          Consumer(builder: (context, ref, _) {
+                            final stats = ref.watch(dashboardStatsProvider);
+                            return AsyncValueView<DashboardStats>(
+                              value: stats,
+                              isAr: isAr,
+                              loadingHeight: 96,
+                              onRetry: () => ref.invalidate(dashboardStatsProvider),
+                              builder: (context, s) =>
+                                  _QuickStats(l: l, cs: cs, isAr: isAr, stats: s),
+                            );
+                          }),
+                          const SizedBox(height: 16),
+                          _QuickAccessGrid(l: l, cs: cs),
+                          const SizedBox(height: 16),
+                          AsyncValueView<PatientProfile>(
+                            value: profileAsync,
+                            isAr: isAr,
+                            loadingHeight: 96,
+                            builder: (context, patient) => Consumer(builder: (context, ref, _) {
+                              final timeline = ref.watch(timelineProvider);
+                              return AsyncValueView<List<TimelineEntry>>(
+                                value: timeline,
+                                isAr: isAr,
+                                loadingHeight: 96,
+                                builder: (context, entries) => _RecentActivity(
+                                  l: l, cs: cs, isAr: isAr, locale: locale,
+                                  entries: entries, patient: patient,
+                                ),
+                              );
+                            }),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 24),
                   ]),
                 ),
               ),
@@ -429,34 +443,43 @@ class _MedicalIdentityCardState extends State<_MedicalIdentityCard> {
               ),
             ),
           ),
-          if (_expanded) ...[
-            const SizedBox(height: 14),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: QrImageView(
-                  data: 'MNIS-MTI:${patient.mti}',
-                  size: 150,
-                  backgroundColor: Colors.white,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: TextButton.icon(
-                onPressed: () => context.push(AppRoutes.emergencyQr),
-                icon: const Icon(Icons.emergency_rounded, color: Colors.white, size: 18),
-                label: Text(
-                  isAr ? 'فتح بطاقة الطوارئ الكاملة' : 'Open full emergency card',
-                  style: AppTypography.labelMd.copyWith(color: Colors.white),
-                ),
-              ),
-            ),
-          ],
+          AnimatedSize(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            child: !_expanded
+                ? const SizedBox.shrink()
+                : Column(
+                    children: [
+                      const SizedBox(height: 14),
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: QrImageView(
+                            data: 'MNIS-MTI:${patient.mti}',
+                            size: 150,
+                            backgroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              AppRoutes.navigate(context, AppRoutes.qrTab),
+                          icon: const Icon(Icons.emergency_rounded, color: Colors.white, size: 18),
+                          label: Text(
+                            isAr ? 'فتح بطاقة الطوارئ الكاملة' : 'Open full emergency card',
+                            style: AppTypography.labelMd.copyWith(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ],
       ),
     );
@@ -486,6 +509,7 @@ class _QuickStats extends StatelessWidget {
             value: stats.lastVisit == null
                 ? (isAr ? 'لا يوجد' : 'None')
                 : df.format(stats.lastVisit!.arrivedAt),
+            onTap: () => AppRoutes.navigate(context, AppRoutes.medicalFile),
           ),
         ),
         const SizedBox(width: 10),
@@ -496,22 +520,21 @@ class _QuickStats extends StatelessWidget {
             color: AppColors.tertiary,
             label: isAr ? 'أدوية فعالة' : 'Active meds',
             value: '${stats.activeMedsCount}',
+            onTap: () => AppRoutes.navigate(context, AppRoutes.prescriptions),
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: GestureDetector(
-            onTap: () => context.push(AppRoutes.appointments),
-            child: _StatTile(
-              cs: cs,
-              icon: Icons.calendar_month_rounded,
-              color: AppColors.primary,
-              label: isAr ? 'الموعد القادم' : 'Next appt.',
-              value: next == null
-                  ? l.noUpcomingAppointment
-                  : df.format(next.scheduledAt ?? next.preferredDate),
-              small: next == null,
-            ),
+          child: _StatTile(
+            cs: cs,
+            icon: Icons.calendar_month_rounded,
+            color: AppColors.primary,
+            label: isAr ? 'الموعد القادم' : 'Next appt.',
+            value: next == null
+                ? l.noUpcomingAppointment
+                : df.format(next.scheduledAt ?? next.preferredDate),
+            small: next == null,
+            onTap: () => AppRoutes.navigate(context, AppRoutes.appointments),
           ),
         ),
       ],
@@ -526,6 +549,7 @@ class _StatTile extends StatelessWidget {
   final String label;
   final String value;
   final bool small;
+  final VoidCallback? onTap;
   const _StatTile({
     required this.cs,
     required this.icon,
@@ -533,31 +557,52 @@ class _StatTile extends StatelessWidget {
     required this.label,
     required this.value,
     this.small = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLowest,
+    return Material(
+      color: cs.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(height: 8),
-          Text(value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: (small ? AppTypography.labelSm : AppTypography.headlineSm)
-                  .copyWith(color: cs.onSurface)),
-          const SizedBox(height: 2),
-          Text(label,
-              style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
-        ],
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 18),
+              ),
+              const SizedBox(height: 8),
+              Text(value,
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: (small ? AppTypography.labelSm : AppTypography.headlineSm)
+                      .copyWith(color: cs.onSurface)),
+              const SizedBox(height: 2),
+              Text(label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.labelSm
+                      .copyWith(color: cs.onSurfaceVariant)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -588,35 +633,40 @@ class _QuickAccessGrid extends StatelessWidget {
       childAspectRatio: 0.95,
       children: [
         for (final item in items)
-          GestureDetector(
-            onTap: () => context.push(item.route),
-            child: Container(
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: item.color.withOpacity(0.12),
-                      shape: BoxShape.circle,
+          Material(
+            color: cs.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => AppRoutes.navigate(context, item.route),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: item.color.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(item.icon, color: item.color, size: 22),
                     ),
-                    child: Icon(item.icon, color: item.color, size: 22),
-                  ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(item.label,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.labelSm.copyWith(color: cs.onSurface)),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(item.label,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.labelSm
+                              .copyWith(color: cs.onSurface)),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -660,10 +710,17 @@ class _RecentActivity extends StatelessWidget {
             children: [
               Text(isAr ? 'آخر النشاطات' : 'Recent activity',
                   style: AppTypography.headlineSm.copyWith(color: cs.onSurface)),
-              GestureDetector(
-                onTap: () => context.push(AppRoutes.medicalFile),
-                child: Text(isAr ? 'عرض الكل' : 'View all',
-                    style: AppTypography.labelMd.copyWith(color: cs.secondary)),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () =>
+                    AppRoutes.navigate(context, AppRoutes.medicalFile),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Text(isAr ? 'عرض الكل' : 'View all',
+                      style:
+                          AppTypography.labelMd.copyWith(color: cs.secondary)),
+                ),
               ),
             ],
           ),
@@ -675,6 +732,7 @@ class _RecentActivity extends StatelessWidget {
               color: cs.error,
               title: isAr ? 'حساسية مسجلة' : 'Recorded allergy',
               subtitle: patient.allergies.map((a) => a.pick(locale)).join('، '),
+              onTap: () => AppRoutes.navigate(context, AppRoutes.medicalFile),
             ),
           if (items.isEmpty && patient.allergies.isEmpty)
             EmptyState(icon: Icons.history_rounded, message: l.noRecentActivity)
@@ -687,6 +745,14 @@ class _RecentActivity extends StatelessWidget {
                 color: _colorFor(e.kind),
                 title: _titleFor(e, locale, isAr),
                 subtitle: df.format(e.date),
+                onTap: () => AppRoutes.navigate(
+                  context,
+                  switch (e.kind) {
+                    TimelineKind.visit => AppRoutes.medicalFile,
+                    TimelineKind.prescription => AppRoutes.prescriptions,
+                    TimelineKind.lab => AppRoutes.labResults,
+                  },
+                ),
               ),
             ],
         ],
@@ -723,40 +789,60 @@ class _ActivityRow extends StatelessWidget {
   final Color color;
   final String title;
   final String subtitle;
+  final VoidCallback? onTap;
   const _ActivityRow({
     required this.cs,
     required this.icon,
     required this.color,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
-          child: Icon(icon, color: color, size: 16),
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: color.withOpacity(0.12), shape: BoxShape.circle),
+              child: Icon(icon, color: color, size: 16),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.labelMd.copyWith(
+                          color: Theme.of(context).colorScheme.onSurface)),
+                  Text(subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.labelSm
+                          .copyWith(color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            if (onTap != null)
+              Icon(
+                Directionality.of(context) == TextDirection.rtl
+                    ? Icons.chevron_left_rounded
+                    : Icons.chevron_right_rounded,
+                size: 16,
+                color: cs.onSurfaceVariant.withOpacity(0.6),
+              ),
+          ],
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.labelMd.copyWith(color: Theme.of(context).colorScheme.onSurface)),
-              Text(subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

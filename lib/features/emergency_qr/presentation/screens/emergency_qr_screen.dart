@@ -19,6 +19,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/providers.dart';
 import '../../../../core/utils/shared_widgets.dart';
 import '../../../../core/widgets/async_view.dart';
+import '../../../../core/widgets/responsive_center.dart';
 
 class EmergencyQrScreen extends ConsumerStatefulWidget {
   final bool fromLogin;
@@ -120,41 +121,50 @@ class _EmergencyQrScreenState extends ConsumerState<EmergencyQrScreen>
             _EmergencyBanner(l: l, cs: cs, isAr: isAr),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: AsyncValueView<EmergencyCard?>(
-                  value: cardAsync,
-                  isAr: isAr,
-                  onRetry: () => ref.invalidate(emergencyCardProvider),
-                  builder: (context, card) {
-                    if (card == null) {
-                      return _NoCachedData(l: l, cs: cs, isAr: isAr);
-                    }
-                    final updatedAt = updatedAtAsync.value;
-                    return Column(
-                      children: [
-                        _QrHubCard(
-                          l: l, cs: cs, isAr: isAr, card: card, updatedAt: updatedAt,
-                          pulse: _pulse, glow: _glow,
-                        ),
-                        const SizedBox(height: 14),
-                        _VitalsGrid(l: l, cs: cs, isAr: isAr, card: card),
-                        const SizedBox(height: 14),
-                        if (!widget.fromLogin && isSignedIn) ...[
-                          _OrganDonorToggleCard(cs: cs, isAr: isAr, card: card),
+                controller: widget.fromLogin
+                    ? null
+                    : AppRoutes.tabScrollController(4),
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: ResponsiveCenter(
+                  child: AsyncValueView<EmergencyCard?>(
+                    value: cardAsync,
+                    isAr: isAr,
+                    onRetry: () => ref.invalidate(emergencyCardProvider),
+                    builder: (context, card) {
+                      if (card == null) {
+                        return _NoCachedData(l: l, cs: cs, isAr: isAr);
+                      }
+                      final updatedAt = updatedAtAsync.value;
+                      return Column(
+                        children: [
+                          _QrHubCard(
+                            l: l, cs: cs, isAr: isAr, card: card, updatedAt: updatedAt,
+                            pulse: _pulse, glow: _glow,
+                          ),
                           const SizedBox(height: 14),
+                          _VitalsGrid(l: l, cs: cs, isAr: isAr, card: card),
+                          const SizedBox(height: 14),
+                          if (!widget.fromLogin && isSignedIn) ...[
+                            _OrganDonorToggleCard(cs: cs, isAr: isAr, card: card),
+                            const SizedBox(height: 14),
+                          ],
+                          _AllergyStrip(cs: cs, isAr: isAr, card: card, locale: locale),
+                          const SizedBox(height: 14),
+                          const _EmergencyContacts(),
+                          const SizedBox(height: 14),
+                          _ActionButtons(
+                            l: l, cs: cs, isAr: isAr, card: card,
+                            refreshing: _refreshing, onRegenerate: () => _regenerate(isAr),
+                          ),
+                          const SizedBox(height: 24),
                         ],
-                        _AllergyStrip(cs: cs, isAr: isAr, card: card, locale: locale),
-                        const SizedBox(height: 14),
-                        const _EmergencyContacts(),
-                        const SizedBox(height: 14),
-                        _ActionButtons(
-                          l: l, cs: cs, isAr: isAr, card: card,
-                          refreshing: _refreshing, onRegenerate: () => _regenerate(isAr),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -327,6 +337,13 @@ class _QrHubCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Row(children: [
+                Icon(Icons.security_rounded, size: 16, color: cs.error),
+                const SizedBox(width: 6),
+                Text(l.quickRescue,
+                    style: AppTypography.labelLg
+                        .copyWith(color: cs.primary, fontWeight: FontWeight.w700)),
+              ]),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
@@ -338,13 +355,6 @@ class _QrHubCard extends StatelessWidget {
                       style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
                 ]),
               ),
-              Row(children: [
-                Icon(Icons.security_rounded, size: 16, color: cs.error),
-                const SizedBox(width: 6),
-                Text(l.quickRescue,
-                    style: AppTypography.labelLg
-                        .copyWith(color: cs.primary, fontWeight: FontWeight.w700)),
-              ]),
             ],
           ),
           const SizedBox(height: 20),
@@ -465,24 +475,33 @@ class _VitalsGrid extends StatelessWidget {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(color: v.bg, borderRadius: BorderRadius.circular(14)),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(v.icon, size: 18, color: v.color),
-                        Text(v.label,
-                            style: AppTypography.labelSm.copyWith(color: v.fgColor.withOpacity(0.7))),
+                        Icon(v.icon, size: 16, color: v.color),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            v.label,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.labelSm
+                                .copyWith(color: v.fgColor.withOpacity(0.75)),
+                          ),
+                        ),
                       ],
                     ),
+                    const SizedBox(height: 6),
                     Text(
                       v.value,
                       style: (v.mono ? AppTypography.mono : AppTypography.headlineMd).copyWith(
-                        color: v.fgColor, fontWeight: FontWeight.w700,
+                        color: v.fgColor,
+                        fontWeight: FontWeight.w700,
                         fontSize: v.value.length > 12 ? 12 : null,
                       ),
-                      textAlign: TextAlign.right,
+                      textAlign: TextAlign.center,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -516,9 +535,18 @@ class _AllergyStrip extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+                color: hasAllergies ? cs.error : cs.tertiary, shape: BoxShape.circle),
+            child: Icon(hasAllergies ? Icons.emergency_rounded : Icons.check_rounded,
+                size: 20, color: hasAllergies ? cs.onError : cs.onTertiary),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   hasAllergies
@@ -527,17 +555,19 @@ class _AllergyStrip extends StatelessWidget {
                   style: AppTypography.labelLg.copyWith(
                       color: hasAllergies ? cs.onErrorContainer : cs.onTertiaryContainer,
                       fontWeight: FontWeight.w700),
-                  textAlign: TextAlign.right,
+                  textAlign: TextAlign.start,
                 ),
                 if (hasAllergies) ...[
                   const SizedBox(height: 8),
                   Wrap(
-                    spacing: 6, runSpacing: 6, alignment: WrapAlignment.end,
+                    spacing: 6,
+                    runSpacing: 6,
+                    alignment: WrapAlignment.start,
                     children: card.allergies
                         .map((a) => Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
-                                color: cs.surfaceContainerLowest.withOpacity(0.8),
+                                color: cs.surfaceContainerLowest.withOpacity(0.85),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(color: cs.error.withOpacity(0.3)),
                               ),
@@ -550,14 +580,6 @@ class _AllergyStrip extends StatelessWidget {
                 ],
               ],
             ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(
-                color: hasAllergies ? cs.error : cs.tertiary, shape: BoxShape.circle),
-            child: Icon(hasAllergies ? Icons.emergency_rounded : Icons.check_rounded,
-                size: 20, color: hasAllergies ? cs.onError : cs.onTertiary),
           ),
         ],
       ),
@@ -614,11 +636,13 @@ class _EmergencyContacts extends ConsumerWidget {
         border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Text(l.emergencyContacts,
+                  style: AppTypography.headlineSm.copyWith(color: cs.onSurface)),
               if (contacts.length < 3)
                 TextButton.icon(
                   onPressed: () => _addContact(context, ref),
@@ -626,8 +650,6 @@ class _EmergencyContacts extends ConsumerWidget {
                   label: Text(l.addContact,
                       style: AppTypography.labelMd.copyWith(color: cs.secondary)),
                 ),
-              Text(l.emergencyContacts,
-                  style: AppTypography.headlineSm.copyWith(color: cs.onSurface)),
             ],
           ),
           const SizedBox(height: 8),
@@ -653,10 +675,10 @@ class _EmergencyContacts extends ConsumerWidget {
                         child: Icon(Icons.call_rounded, size: 16, color: cs.onPrimary),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(c.name,
                               style: AppTypography.bodyMd.copyWith(color: cs.onSurface),

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/models/models.dart';
 import '../../../../core/providers/data_providers.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/providers.dart';
@@ -12,6 +13,7 @@ import '../../../../core/utils/shared_widgets.dart';
 import '../../../../core/widgets/account_sheet.dart';
 import '../../../../core/widgets/async_view.dart';
 import '../../../../core/widgets/patient_avatar.dart';
+import '../../../../core/widgets/responsive_center.dart';
 
 enum _Filter { all, normal, abnormal }
 
@@ -44,6 +46,10 @@ class _LabResultsScreenState extends ConsumerState<LabResultsScreen> {
             await ref.read(labResultsProvider.future).catchError((_) => <LabResultPanel>[]);
           },
           child: CustomScrollView(
+            controller: AppRoutes.tabScrollController(2),
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
             slivers: [
               SliverAppBar(
                 pinned: true,
@@ -83,87 +89,122 @@ class _LabResultsScreenState extends ConsumerState<LabResultsScreen> {
                 padding: const EdgeInsets.all(14),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          width: 40, height: 40,
-                          decoration: BoxDecoration(
-                              color: cs.primary, borderRadius: BorderRadius.circular(10)),
-                          child: Icon(Icons.biotech_rounded, color: cs.onPrimary, size: 22),
-                        ),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(l.labResultsTitle,
-                                style: AppTypography.headlineSm.copyWith(color: cs.primary)),
-                            Text(l.mnisSystem,
-                                style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    AsyncValueView<List<LabResultPanel>>(
-                      value: resultsAsync,
-                      isAr: isAr,
-                      onRetry: () => ref.invalidate(labResultsProvider),
-                      builder: (context, panels) {
-                        final filtered = switch (_filter) {
-                          _Filter.all => panels,
-                          _Filter.normal => panels.where((p) => p.rows.isNotEmpty && !p.hasAbnormal).toList(),
-                          _Filter.abnormal => panels.where((p) => p.hasAbnormal).toList(),
-                        };
-                        final normalCount = panels.where((p) => p.rows.isNotEmpty && !p.hasAbnormal).length;
-                        final abnormalCount = panels.where((p) => p.hasAbnormal).length;
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            SizedBox(
-                              height: 36,
-                              child: ListView(
-                                scrollDirection: Axis.horizontal,
-                                reverse: isAr,
-                                children: [
-                                  _FilterChip(
-                                    label: '${l.filterAll} (${panels.length})',
-                                    selected: _filter == _Filter.all,
-                                    onTap: () => setState(() => _filter = _Filter.all),
-                                    cs: cs,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _FilterChip(
-                                    label:
-                                        '${isAr ? "طبيعية" : "Normal"} ($normalCount)',
-                                    selected: _filter == _Filter.normal,
-                                    onTap: () => setState(() => _filter = _Filter.normal),
-                                    cs: cs,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _FilterChip(
-                                    label: '${isAr ? "خارج النطاق" : "Abnormal"} ($abnormalCount)',
-                                    selected: _filter == _Filter.abnormal,
-                                    onTap: () => setState(() => _filter = _Filter.abnormal),
-                                    cs: cs,
-                                    dotColor: cs.error,
-                                  ),
-                                ],
+                    ResponsiveCenter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: cs.primary,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(Icons.biotech_rounded,
+                                    color: cs.onPrimary, size: 22),
                               ),
-                            ),
-                            const SizedBox(height: 14),
-                            if (filtered.isEmpty)
-                              EmptyState(icon: Icons.biotech_outlined, message: l.labResultsEmpty)
-                            else
-                              for (final p in filtered) ...[
-                                _LabPanelCard(l: l, cs: cs, isAr: isAr, locale: locale, panel: p),
-                                const SizedBox(height: 12),
-                              ],
-                          ],
-                        );
-                      },
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      l.labResultsTitle,
+                                      style: AppTypography.headlineSm
+                                          .copyWith(color: cs.primary),
+                                    ),
+                                    Text(
+                                      l.mnisSystem,
+                                      style: AppTypography.labelSm
+                                          .copyWith(color: cs.onSurfaceVariant),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          AsyncValueView<List<LabResultPanel>>(
+                            value: resultsAsync,
+                            isAr: isAr,
+                            onRetry: () => ref.invalidate(labResultsProvider),
+                            builder: (context, panels) {
+                              final filtered = switch (_filter) {
+                                _Filter.all => panels,
+                                _Filter.normal => panels
+                                    .where((p) => p.rows.isNotEmpty && !p.hasAbnormal)
+                                    .toList(),
+                                _Filter.abnormal =>
+                                    panels.where((p) => p.hasAbnormal).toList(),
+                              };
+                              final normalCount = panels
+                                  .where((p) => p.rows.isNotEmpty && !p.hasAbnormal)
+                                  .length;
+                              final abnormalCount =
+                                  panels.where((p) => p.hasAbnormal).length;
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Center(
+                                    child: Wrap(
+                                      alignment: WrapAlignment.center,
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        _FilterChip(
+                                          label: '${l.filterAll} (${panels.length})',
+                                          selected: _filter == _Filter.all,
+                                          onTap: () =>
+                                              setState(() => _filter = _Filter.all),
+                                          cs: cs,
+                                        ),
+                                        _FilterChip(
+                                          label:
+                                              '${isAr ? "طبيعية" : "Normal"} ($normalCount)',
+                                          selected: _filter == _Filter.normal,
+                                          onTap: () => setState(
+                                              () => _filter = _Filter.normal),
+                                          cs: cs,
+                                        ),
+                                        _FilterChip(
+                                          label:
+                                              '${isAr ? "خارج النطاق" : "Abnormal"} ($abnormalCount)',
+                                          selected: _filter == _Filter.abnormal,
+                                          onTap: () => setState(
+                                              () => _filter = _Filter.abnormal),
+                                          cs: cs,
+                                          dotColor: cs.error,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  if (filtered.isEmpty)
+                                    EmptyState(
+                                        icon: Icons.biotech_outlined,
+                                        message: l.labResultsEmpty)
+                                  else
+                                    for (final p in filtered) ...[
+                                      _LabPanelCard(
+                                        l: l,
+                                        cs: cs,
+                                        isAr: isAr,
+                                        locale: locale,
+                                        panel: p,
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                ],
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 24),
                   ]),
                 ),
               ),
@@ -288,15 +329,21 @@ class _LabPanelCardState extends State<_LabPanelCard> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cs.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
         boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.05), blurRadius: 10)],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Directionality(
+                textDirection: TextDirection.ltr,
+                child: Text('#${p.barcode}',
+                    style: AppTypography.mono.copyWith(color: cs.onSurfaceVariant)),
+              ),
               StatusBadge(
                 label: stMeta.label,
                 backgroundColor: stMeta.bg,
@@ -304,19 +351,21 @@ class _LabPanelCardState extends State<_LabPanelCard> {
                 icon: stMeta.icon,
                 fontSize: 10,
               ),
-              Text('#${p.barcode}', style: AppTypography.mono.copyWith(color: cs.onSurfaceVariant)),
             ],
           ),
           const SizedBox(height: 8),
-          Text(p.panel.pick(widget.locale),
-              style: AppTypography.headlineSm.copyWith(color: cs.primary),
-              textAlign: TextAlign.right),
+          Text(
+            p.panel.pick(widget.locale),
+            style: AppTypography.headlineSm.copyWith(color: cs.primary),
+            textAlign: TextAlign.start,
+          ),
+          const SizedBox(height: 2),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(p.verifiedAt == null ? df.format(p.collectedAt) : df.format(p.verifiedAt!),
-                  style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
               Text(p.sampleType.pick(widget.locale),
+                  style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
+              Text(p.verifiedAt == null ? df.format(p.collectedAt) : df.format(p.verifiedAt!),
                   style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
             ],
           ),
@@ -333,94 +382,142 @@ class _LabPanelCardState extends State<_LabPanelCard> {
                 isAr
                     ? 'العينة مسجلة برقم باركود (#${p.barcode}) وحالتها (${stMeta.label}). ستظهر القيم والتحليل الطبي هنا تلقائياً فور اعتمادها من المعمل.'
                     : 'Sample registered with barcode (#${p.barcode}) — Status: ${stMeta.label}. Quantitative results will appear here once verified by the lab.',
+                textAlign: TextAlign.start,
                 style: AppTypography.bodySm.copyWith(color: cs.onSurfaceVariant),
               ),
             ),
           ] else ...[
-            InkWell(
-              onTap: () => setState(() => _expanded = !_expanded),
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: p.hasAbnormal ? cs.errorContainer : cs.tertiaryContainer.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(_expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                      size: 16,
-                      color: p.hasAbnormal ? cs.onErrorContainer : cs.onTertiaryContainer),
-                  const SizedBox(width: 4),
-                  Text(
-                    p.hasAbnormal
-                        ? (isAr
-                            ? '${p.rows.where((r) => r.flag != ResultFlag.normal).length} خارج النطاق الطبيعي'
-                            : '${p.rows.where((r) => r.flag != ResultFlag.normal).length} out of normal range')
-                        : (isAr ? 'كل المؤشرات طبيعية' : 'All indicators normal'),
-                    style: AppTypography.labelMd.copyWith(
-                        color: p.hasAbnormal ? cs.onErrorContainer : cs.onTertiaryContainer),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: InkWell(
+                onTap: () => setState(() => _expanded = !_expanded),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: p.hasAbnormal ? cs.errorContainer : cs.tertiaryContainer.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                ]),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(
+                      p.hasAbnormal
+                          ? (isAr
+                              ? '${p.rows.where((r) => r.flag != ResultFlag.normal).length} خارج النطاق الطبيعي'
+                              : '${p.rows.where((r) => r.flag != ResultFlag.normal).length} out of normal range')
+                          : (isAr ? 'كل المؤشرات طبيعية' : 'All indicators normal'),
+                      style: AppTypography.labelMd.copyWith(
+                          color: p.hasAbnormal ? cs.onErrorContainer : cs.onTertiaryContainer),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(_expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        size: 16,
+                        color: p.hasAbnormal ? cs.onErrorContainer : cs.onTertiaryContainer),
+                  ]),
+                ),
               ),
             ),
-            if (_expanded) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration:
-                    BoxDecoration(color: cs.surfaceContainerLow, borderRadius: BorderRadius.circular(10)),
-                child: Column(
-                  children: [
-                    for (final row in p.rows) ...[
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text('${row.value} ${row.unit}',
-                              style: AppTypography.headlineSm.copyWith(
-                                  color: _flagColor(row.flag, cs), fontWeight: FontWeight.w700)),
-                          const Spacer(),
-                          Expanded(
-                            flex: 2,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(row.analyte.pick(widget.locale),
-                                    textAlign: TextAlign.right,
-                                    style: AppTypography.bodySm.copyWith(color: cs.onSurface)),
-                                Text('${row.refLow}–${row.refHigh} ${row.unit}',
-                                    style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              child: !_expanded
+                  ? const SizedBox.shrink()
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            children: [
+                              for (final row in p.rows) ...[
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            row.analyte.pick(widget.locale),
+                                            textAlign: TextAlign.start,
+                                            style: AppTypography.bodySm.copyWith(
+                                              color: cs.onSurface,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          Directionality(
+                                            textDirection: TextDirection.ltr,
+                                            child: Text(
+                                              '${row.refLow}–${row.refHigh} ${row.unit}',
+                                              style: AppTypography.labelSm
+                                                  .copyWith(color: cs.onSurfaceVariant),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Directionality(
+                                      textDirection: TextDirection.ltr,
+                                      child: Text(
+                                        '${row.value} ${row.unit}',
+                                        style: AppTypography.headlineSm.copyWith(
+                                          color: _flagColor(row.flag, cs),
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (row.refHigh > row.refLow) ...[
+                                  const SizedBox(height: 6),
+                                  _AnalyteRangeBar(
+                                    row: row,
+                                    flagColor: row.flag == ResultFlag.normal
+                                        ? AppColors.tertiary
+                                        : _flagColor(row.flag, cs),
+                                    cs: cs,
+                                  ),
+                                ],
+                                if (row != p.rows.last)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    child: Divider(
+                                      height: 1,
+                                      color: cs.outlineVariant.withOpacity(0.4),
+                                    ),
+                                  ),
                               ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            onPressed: () =>
+                                _showSmartLabExplainer(context, p, isAr, widget.locale, cs),
+                            icon: Icon(Icons.auto_awesome_rounded, size: 16, color: cs.primary),
+                            label: Text(
+                              isAr ? 'تفسير النتيجة طبياً' : 'Smart Lab Explainer',
+                              style: AppTypography.labelMd.copyWith(color: cs.primary),
+                            ),
+                            style: TextButton.styleFrom(
+                              backgroundColor: cs.primaryContainer.withOpacity(0.35),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-                      if (row != p.rows.last)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
                         ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton.icon(
-                  onPressed: () => _showSmartLabExplainer(context, p, isAr, widget.locale, cs),
-                  icon: Icon(Icons.auto_awesome_rounded, size: 16, color: cs.primary),
-                  label: Text(
-                    isAr ? 'تفسير النتيجة طبياً' : 'Smart Lab Explainer',
-                    style: AppTypography.labelMd.copyWith(color: cs.primary),
-                  ),
-                  style: TextButton.styleFrom(
-                    backgroundColor: cs.primaryContainer.withOpacity(0.35),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ),
-            ],
+                      ],
+                    ),
+            ),
           ],
         ],
       ),
@@ -569,6 +666,73 @@ class _LabPanelCardState extends State<_LabPanelCard> {
             ? 'قيمة حرجة خارج المعدل المرجعي ($range) بفارق واضح — يجب التواصل العاجل مع الطبيب المعالج أو الطوارئ.'
             : 'Critical deviation from reference range ($range) — prompt medical attention with your physician is advised.';
     }
+  }
+}
+
+class _AnalyteRangeBar extends StatelessWidget {
+  final LabResultRow row;
+  final Color flagColor;
+  final ColorScheme cs;
+  const _AnalyteRangeBar({
+    required this.row,
+    required this.flagColor,
+    required this.cs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final span = (row.refHigh - row.refLow).abs();
+    final minBound = row.refLow - (span * 0.35);
+    final maxBound = row.refHigh + (span * 0.35);
+    final total = (maxBound - minBound).clamp(0.0001, double.infinity);
+    final normStart = ((row.refLow - minBound) / total).clamp(0.0, 1.0);
+    final normWidth = ((row.refHigh - row.refLow) / total).clamp(0.08, 1.0 - normStart);
+    final markerPos = ((row.value - minBound) / total).clamp(0.02, 0.98);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        return SizedBox(
+          height: 10,
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Container(
+                height: 4,
+                width: w,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              Positioned(
+                left: w * normStart,
+                width: w * normWidth,
+                child: Container(
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.tertiary.withOpacity(0.32),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: (w * markerPos - 4).clamp(0.0, (w - 8).clamp(0.0, w)),
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: flagColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: cs.surface, width: 1.5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 

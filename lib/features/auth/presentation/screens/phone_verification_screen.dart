@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart' hide TextDirection;
@@ -15,10 +16,12 @@ import '../../../../core/providers/data_providers.dart';
 import '../../../../core/providers/notifications_provider.dart';
 import '../../../../core/providers/session_provider.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/services/app_permissions_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/biometric_enrollment.dart';
 import '../../../../core/utils/providers.dart';
+import '../widgets/in_app_sms_bridge.dart';
 
 class PhoneVerificationScreen extends ConsumerStatefulWidget {
   const PhoneVerificationScreen({super.key});
@@ -30,6 +33,8 @@ class PhoneVerificationScreen extends ConsumerStatefulWidget {
 
 class _PhoneVerificationScreenState
     extends ConsumerState<PhoneVerificationScreen> {
+  static const _smsAutofillChannel = MethodChannel('mnis/sms_autofill');
+
   final _otpCtrl = TextEditingController();
 
   bool _loadingStatus = true;
@@ -45,9 +50,9 @@ class _PhoneVerificationScreenState
   DateTime? _verifiedAt;
 
   bool _codeSent = false;
-  String? _verificationId;
-  int? _resendToken;
+  bool _nativeSmsListenerActive = false;
   ConfirmationResult? _webConfirmation;
+  InAppSmsBridgeController? _smsBridge;
   int _cooldownSeconds = 0;
   Timer? _cooldownTimer;
 
@@ -56,14 +61,106 @@ class _PhoneVerificationScreenState
   @override
   void initState() {
     super.initState();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      _smsAutofillChannel.setMethodCallHandler(_handleSmsAutofillCall);
+    }
     _loadStatus();
   }
 
   @override
   void dispose() {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      _smsAutofillChannel.setMethodCallHandler(null);
+      unawaited(_stopInAppSmsListener());
+    }
+    _smsBridge?.dispose();
+    _smsBridge = null;
     _cooldownTimer?.cancel();
     _otpCtrl.dispose();
     super.dispose();
+  }
+
+  InAppSmsBridgeController _ensureSmsBridge() {
+    final existing = _smsBridge;
+    if (existing != null) return existing;
+
+    final brightness = Theme.of(context).brightness;
+    final bridge = InAppSmsBridgeController(
+      isAr: _isAr,
+      isDark: brightness == Brightness.dark,
+      onCodeSent: () {
+        if (!mounted) return;
+        setState(() {
+          _codeSent = true;
+          _sendingOtp = false;
+        });
+        _startCooldown();
+        _showSnack(
+          _isAr
+              ? (_nativeSmsListenerActive
+                  ? 'تم إرسال كود التأكيد عبر SMS إلى شريحة هاتفك، وسيُقرأ ويُفعّل تلقائياً داخل التطبيق.'
+                  : 'تم إرسال كود التأكيد عبر SMS إلى شريحة هاتفك مع دعم التعبئة التلقائية من لوحة المفاتيح.')
+              : (_nativeSmsListenerActive
+                  ? 'Real SMS sent to your SIM — auto-fill is active inside MNIS.'
+                  : 'Real SMS sent to your SIM with keyboard OTP autofill ready.'),
+        );
+      },
+      onVerified: (idToken) {
+        if (!mounted) return;
+        unawaited(_submitVerifiedIdToken(idToken));
+      },
+      onError: (code, message) {
+        unawaited(_stopInAppSmsListener());
+        if (!mounted) return;
+        setState(() => _sendingOtp = false);
+        _setActionError(SmsBridgeException(code, message));
+      },
+      onVerifyError: (code, message) {
+        if (!mounted) return;
+        setState(() => _verifyingOtp = false);
+        _setActionError(SmsBridgeException(code, message));
+      },
+    );
+    _smsBridge = bridge;
+    return bridge;
+  }
+
+  Future<dynamic> _handleSmsAutofillCall(MethodCall call) async {
+    if (call.method == 'onSmsOtpReceived' && mounted && !_verified) {
+      final code = (call.arguments as String? ?? '').trim();
+      if (code.length == 6) {
+        _otpCtrl.value = TextEditingValue(
+          text: code,
+          selection: TextSelection.collapsed(offset: code.length),
+        );
+        if (!_verifyingOtp && (_codeSent || _webConfirmation != null)) {
+          unawaited(_verifyOtpCode());
+        }
+      }
+    }
+  }
+
+  Future<bool> _startInAppSmsListener() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
+    try {
+      final snap = await AppPermissionsService.instance.checkAll();
+      if (snap.sms == CapabilityStatus.denied) {
+        await AppPermissionsService.instance.requestSms();
+      }
+      final started =
+          await _smsAutofillChannel.invokeMethod<bool>('startInAppSmsListener');
+      return started ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _stopInAppSmsListener() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    _nativeSmsListenerActive = false;
+    try {
+      await _smsAutofillChannel.invokeMethod<void>('stopInAppSmsListener');
+    } catch (_) {}
   }
 
   Future<void> _loadStatus() async {
@@ -114,14 +211,6 @@ class _PhoneVerificationScreenState
   Future<void> _sendSmsOtp() async {
     final phone = _phoneE164;
     if (phone == null || phone.isEmpty) return;
-    if (!FirebaseBootstrap.isInitialized) {
-      _showSnack(
-        _isAr
-            ? 'خدمة التحقق عبر SMS غير متاحة حالياً على هذا الجهاز.'
-            : 'SMS verification service is unavailable on this device.',
-      );
-      return;
-    }
 
     setState(() {
       _sendingOtp = true;
@@ -129,8 +218,14 @@ class _PhoneVerificationScreenState
     });
 
     try {
-      await FirebaseAuth.instance.setLanguageCode(_isAr ? 'ar' : 'en');
       if (kIsWeb) {
+        if (!FirebaseBootstrap.isInitialized) {
+          throw const SmsBridgeException(
+            'unavailable',
+            'Firebase unavailable on Web',
+          );
+        }
+        await FirebaseAuth.instance.setLanguageCode(_isAr ? 'ar' : 'en');
         _webConfirmation = null;
         final confirmation =
             await FirebaseAuth.instance.signInWithPhoneNumber(phone);
@@ -143,52 +238,25 @@ class _PhoneVerificationScreenState
         _startCooldown();
         _showSnack(
           _isAr
-              ? 'تم إرسال كود التأكيد عبر SMS إلى رقمك المسجل.'
-              : 'SMS verification code sent to your registered number.',
+              ? 'تم إرسال كود التأكيد عبر رسالة SMS إلى رقمك المسجّل.'
+              : 'Real SMS verification code sent to your registered mobile number.',
         );
         return;
       }
 
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        // Keep verification strictly inside the native app (reCAPTCHA Enterprise
-        // RecaptchaTasksClient / Play Integrity) and never force Chrome tabs.
-        try {
-          await FirebaseAuth.instance.setSettings(forceRecaptchaFlow: false);
-        } catch (_) {}
+      // Mobile (Android/iOS): use MNIS's embedded authorized WebView bridge so
+      // verification NEVER launches Google Chrome and stays 100% inside the app.
+      final bridge = _ensureSmsBridge();
+      if (!bridge.isSupported) {
+        throw const SmsBridgeException(
+          'unavailable',
+          'In-app SMS bridge is not supported on this platform.',
+        );
       }
-
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phone,
-        timeout: const Duration(seconds: 60),
-        forceResendingToken: _resendToken,
-        verificationCompleted: (credential) {
-          unawaited(_completeWithPhoneCredential(credential));
-        },
-        verificationFailed: (e) {
-          if (!mounted) return;
-          setState(() => _sendingOtp = false);
-          _setActionError(e);
-        },
-        codeSent: (verificationId, resendToken) {
-          if (!mounted) return;
-          setState(() {
-            _verificationId = verificationId;
-            _resendToken = resendToken;
-            _codeSent = true;
-            _sendingOtp = false;
-          });
-          _startCooldown();
-          _showSnack(
-            _isAr
-                ? 'تم إرسال كود التأكيد عبر SMS إلى رقمك المسجل.'
-                : 'SMS verification code sent to your registered number.',
-          );
-        },
-        codeAutoRetrievalTimeout: (verificationId) {
-          _verificationId = verificationId;
-        },
-      );
+      _nativeSmsListenerActive = await _startInAppSmsListener();
+      await bridge.sendSms(phone, isAr: _isAr);
     } catch (e) {
+      unawaited(_stopInAppSmsListener());
       if (!mounted) return;
       setState(() => _sendingOtp = false);
       _setActionError(e);
@@ -196,6 +264,7 @@ class _PhoneVerificationScreenState
   }
 
   Future<void> _verifyOtpCode() async {
+    if (_verifyingOtp || _verified) return;
     final code = _otpCtrl.text.trim();
     if (code.length < 6) {
       _showSnack(
@@ -206,31 +275,33 @@ class _PhoneVerificationScreenState
       return;
     }
 
+    TextInput.finishAutofillContext();
     setState(() {
       _verifyingOtp = true;
       _actionError = null;
     });
 
     try {
-      UserCredential cred;
+      unawaited(_stopInAppSmsListener());
       if (kIsWeb) {
         final conf = _webConfirmation;
         if (conf == null) {
           throw StateError('MISSING_WEB_CONFIRMATION');
         }
-        cred = await conf.confirm(code);
-      } else {
-        final verId = _verificationId;
-        if (verId == null || verId.isEmpty) {
-          throw StateError('MISSING_VERIFICATION_ID');
+        final cred = await conf.confirm(code);
+        final idToken = await cred.user?.getIdToken(true);
+        if (idToken == null || idToken.isEmpty) {
+          throw StateError('INVALID_FIREBASE_TOKEN');
         }
-        final phoneCred = PhoneAuthProvider.credential(
-          verificationId: verId,
-          smsCode: code,
-        );
-        cred = await FirebaseAuth.instance.signInWithCredential(phoneCred);
+        await _submitVerifiedIdToken(idToken);
+        return;
       }
-      await _finishServerVerification(cred);
+
+      final bridge = _smsBridge;
+      if (bridge == null) {
+        throw const SmsBridgeException('session-expired', 'Missing SMS bridge');
+      }
+      await bridge.confirmOtp(code);
     } catch (e) {
       if (!mounted) return;
       setState(() => _verifyingOtp = false);
@@ -238,19 +309,10 @@ class _PhoneVerificationScreenState
     }
   }
 
-  Future<void> _completeWithPhoneCredential(
-    PhoneAuthCredential credential,
-  ) async {
-    if (!mounted) return;
-    setState(() {
-      _sendingOtp = false;
-      _verifyingOtp = true;
-      _actionError = null;
-    });
+  Future<void> _submitVerifiedIdToken(String idToken) async {
     try {
-      final cred =
-          await FirebaseAuth.instance.signInWithCredential(credential);
-      await _finishServerVerification(cred);
+      final result = await ref.read(repositoryProvider).verifyPhone(idToken);
+      await _completeVerifiedFlow(result);
     } catch (e) {
       if (!mounted) return;
       setState(() => _verifyingOtp = false);
@@ -258,13 +320,9 @@ class _PhoneVerificationScreenState
     }
   }
 
-  Future<void> _finishServerVerification(UserCredential cred) async {
-    final idToken = await cred.user?.getIdToken(true);
-    if (idToken == null || idToken.isEmpty) {
-      throw StateError('INVALID_FIREBASE_TOKEN');
-    }
-
-    final result = await ref.read(repositoryProvider).verifyPhone(idToken);
+  Future<void> _completeVerifiedFlow(Map<String, dynamic> result) async {
+    unawaited(_stopInAppSmsListener());
+    unawaited(_smsBridge?.reset());
     unawaited(FirebaseAnalyticsService.instance.logPhoneVerified());
 
     final repo = ref.read(repositoryProvider);
@@ -299,8 +357,8 @@ class _PhoneVerificationScreenState
         ),
         content: Text(
           _isAr
-              ? 'تم التحقق من رقم هاتفك المسجّل لدى الاستقبال وتفعيل حسابك بالكامل في منظومة MNIS.'
-              : 'Your reception-registered mobile number has been verified and your MNIS account is now fully active.',
+              ? 'تم التحقق من رقم هاتفك المسجّل لدى الاستقبال عبر رسالة SMS وتفعيل حسابك بالكامل في منظومة MNIS.'
+              : 'Your reception-registered mobile number has been verified via SMS and your MNIS account is now fully active.',
         ),
         actions: [
           FilledButton(
@@ -337,9 +395,18 @@ class _PhoneVerificationScreenState
   }
 
   String _friendlyError(Object err) {
+    String? code;
+    var rawMsg = '';
     if (err is FirebaseAuthException) {
-      final rawMsg = (err.message ?? '').toLowerCase();
-      switch (err.code) {
+      code = err.code;
+      rawMsg = (err.message ?? '').toLowerCase();
+    } else if (err is SmsBridgeException) {
+      code = err.code.replaceFirst('auth/', '');
+      rawMsg = err.message.toLowerCase();
+    }
+
+    if (code != null) {
+      switch (code) {
         case 'operation-not-allowed':
           if (rawMsg.contains('region') || rawMsg.contains('sms')) {
             return _isAr
@@ -352,8 +419,8 @@ class _PhoneVerificationScreenState
         case 'missing-client-identifier':
         case 'app-not-authorized':
           return _isAr
-              ? 'تعذّر التحقق من أمان التطبيق تلقائياً. تأكد من تحديث خدمات Google Play على الهاتف وحاول مرة أخرى.'
-              : 'Could not verify app integrity automatically. Ensure Google Play Services is updated and retry.';
+              ? 'تعذّر التحقق من أمان التطبيق تلقائياً، يرجى المحاولة مرة أخرى.'
+              : 'Could not verify security challenge automatically. Please retry.';
         case 'captcha-check-failed':
         case 'web-context-cancelled':
         case 'missing-activity-for-recaptcha':
@@ -389,11 +456,15 @@ class _PhoneVerificationScreenState
               ? 'تم إرسال طلبات متكررة، يرجى الانتظار بضع دقائق ثم المحاولة.'
               : 'Too many attempts. Please wait a few minutes and try again.';
         case 'session-expired':
+        case 'code-expired':
           return _isAr
               ? 'انتهت صلاحية كود التحقق، أعد إرسال كود جديد.'
               : 'Verification code expired. Please resend.';
+        case 'unavailable':
+          return _isAr
+              ? 'خدمة التحقق غير متاحة حالياً، حاول مرة أخرى.'
+              : 'Verification service is currently unavailable.';
       }
-      return err.message ?? (_isAr ? 'تعذّر إرسال الكود' : 'SMS request failed');
     }
     if (err is ApiException) {
       switch (err.code) {
@@ -431,6 +502,7 @@ class _PhoneVerificationScreenState
     final cs = Theme.of(context).colorScheme;
     final locale = ref.watch(localeProvider);
     final isAr = locale.languageCode == 'ar';
+    final bridge = !kIsWeb ? _ensureSmsBridge() : _smsBridge;
 
     return PopScope(
       canPop: _verified,
@@ -459,265 +531,324 @@ class _PhoneVerificationScreenState
         ),
         body: Directionality(
           textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
-          child: _loadingStatus
-              ? const Center(child: CircularProgressIndicator())
-              : _loadError != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.cloud_off_rounded,
-                                size: 48, color: cs.error),
-                            const SizedBox(height: 12),
-                            Text(
-                              isAr
-                                  ? 'تعذّر تحميل بيانات الهاتف المسجّل'
-                                  : 'Could not load registered mobile status',
-                              style: AppTypography.bodyMd,
-                            ),
-                            const SizedBox(height: 12),
-                            FilledButton(
-                              onPressed: _loadStatus,
-                              child: Text(isAr ? 'إعادة المحاولة' : 'Retry'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (!_verified) ...[
-                            Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: cs.secondaryContainer.withOpacity(0.6),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  isAr
-                                      ? 'الخطوة ٢ من ٢ — تأكيد رقم الهاتف عبر SMS'
-                                      : 'Step 2 of 2 — Confirm Mobile via SMS',
-                                  style: AppTypography.labelMd.copyWith(
-                                    color: cs.onSecondaryContainer,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                          ],
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: _verified
-                                  ? AppColors.secondary.withOpacity(0.1)
-                                  : cs.primaryContainer.withOpacity(0.25),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: _verified
-                                    ? AppColors.secondary.withOpacity(0.35)
-                                    : cs.primary.withOpacity(0.2),
-                              ),
-                            ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _loadingStatus
+                  ? const Center(child: CircularProgressIndicator())
+                  : _loadError != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
                             child: Column(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  _verified
-                                      ? Icons.verified_user_rounded
-                                      : Icons.sms_rounded,
-                                  size: 48,
-                                  color: _verified
-                                      ? AppColors.secondary
-                                      : cs.primary,
-                                ),
+                                Icon(Icons.cloud_off_rounded,
+                                    size: 48, color: cs.error),
                                 const SizedBox(height: 12),
                                 Text(
-                                  _verified
-                                      ? (isAr
-                                          ? 'رقم هاتفك موثّق بالكامل'
-                                          : 'Mobile Number Verified')
-                                      : !_hasPhone
-                                          ? (isAr
-                                              ? 'لا يوجد رقم هاتف مسجّل بعد'
-                                              : 'No Registered Phone Number')
-                                          : (isAr
-                                              ? 'أكّد رقم هاتفك للمتابعة'
-                                              : 'Verify Your Phone to Continue'),
-                                  textAlign: TextAlign.center,
-                                  style: AppTypography.headlineMd
-                                      .copyWith(color: cs.onSurface),
+                                  isAr
+                                      ? 'تعذّر تحميل بيانات الهاتف المسجّل'
+                                      : 'Could not load registered mobile status',
+                                  style: AppTypography.bodyMd,
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _verified
-                                      ? (isAr
-                                          ? 'تم تأكيد الرقم ${_phoneMasked ?? ''} عبر رسالة SMS بنجاح.'
-                                          : 'Number ${_phoneMasked ?? ''} verified via SMS.')
-                                      : !_hasPhone
-                                          ? (isAr
-                                              ? 'لا يمكنك الدخول للملف الطبي قبل تسجيل رقم هاتفك لدى مكتب الاستقبال وتأكيده برسالة SMS. يرجى مراجعة الاستقبال ثم الضغط على تحديث الحالة.'
-                                              : 'Please ask reception to register your unique mobile number first, then tap Refresh Status to verify via SMS.')
-                                          : (isAr
-                                              ? 'لحماية بياناتك الطبية، أرسل كود التأكيد عبر رسالة SMS إلى رقمك المسجّل لدى الاستقبال (${_phoneMasked ?? ''}) ثم أدخله للمتابعة.'
-                                              : 'To protect your medical record, confirm ownership of your reception-registered number (${_phoneMasked ?? ''}) via SMS OTP.'),
-                                  textAlign: TextAlign.center,
-                                  style: AppTypography.bodySm
-                                      .copyWith(color: cs.onSurfaceVariant),
+                                const SizedBox(height: 12),
+                                FilledButton(
+                                  onPressed: _loadStatus,
+                                  child: Text(isAr ? 'إعادة المحاولة' : 'Retry'),
                                 ),
-                                if (_verified && _verifiedAt != null) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    DateFormat.yMMMd(locale.languageCode)
-                                        .add_jm()
-                                        .format(_verifiedAt!),
-                                    style: AppTypography.labelSm
-                                        .copyWith(color: cs.onSurfaceVariant),
-                                  ),
-                                ],
                               ],
                             ),
                           ),
-                          if (_actionError != null) ...[
-                            const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: cs.errorContainer,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: cs.error.withOpacity(0.35),
-                                ),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                        )
+                      : SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 520),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Icon(
-                                    Icons.error_outline_rounded,
-                                    color: cs.onErrorContainer,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      _actionError!,
-                                      style: AppTypography.bodySm.copyWith(
-                                        color: cs.onErrorContainer,
+                                  if (!_verified) ...[
+                                    Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 14, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: cs.secondaryContainer
+                                              .withOpacity(0.6),
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          isAr
+                                              ? 'الخطوة ٢ من ٢ — تأكيد رقم الهاتف عبر SMS'
+                                              : 'Step 2 of 2 — Confirm Mobile via SMS',
+                                          style: AppTypography.labelMd.copyWith(
+                                            color: cs.onSecondaryContainer,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
                                       ),
                                     ),
+                                    const SizedBox(height: 14),
+                                  ],
+                                  Container(
+                                    padding: const EdgeInsets.all(20),
+                                    decoration: BoxDecoration(
+                                      color: _verified
+                                          ? AppColors.secondary.withOpacity(0.1)
+                                          : cs.primaryContainer
+                                              .withOpacity(0.25),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: _verified
+                                            ? AppColors.secondary
+                                                .withOpacity(0.35)
+                                            : cs.primary.withOpacity(0.2),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          _verified
+                                              ? Icons.verified_user_rounded
+                                              : Icons.sms_rounded,
+                                          size: 48,
+                                          color: _verified
+                                              ? AppColors.secondary
+                                              : cs.primary,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          _verified
+                                              ? (isAr
+                                                  ? 'رقم هاتفك موثّق بالكامل'
+                                                  : 'Mobile Number Verified')
+                                              : !_hasPhone
+                                                  ? (isAr
+                                                      ? 'لا يوجد رقم هاتف مسجّل بعد'
+                                                      : 'No Registered Phone Number')
+                                                  : (isAr
+                                                      ? 'أكّد رقم هاتفك للمتابعة'
+                                                      : 'Verify Your Phone to Continue'),
+                                          textAlign: TextAlign.center,
+                                          style: AppTypography.headlineMd
+                                              .copyWith(color: cs.onSurface),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          _verified
+                                              ? (isAr
+                                                  ? 'تم تأكيد الرقم ${_phoneMasked ?? ''} عبر رسالة SMS بنجاح.'
+                                                  : 'Number ${_phoneMasked ?? ''} verified via SMS.')
+                                              : !_hasPhone
+                                                  ? (isAr
+                                                      ? 'لا يمكنك الدخول للملف الطبي قبل تسجيل رقم هاتفك لدى مكتب الاستقبال وتأكيده برسالة SMS. يرجى مراجعة الاستقبال ثم الضغط على تحديث الحالة.'
+                                                      : 'Please ask reception to register your unique mobile number first, then tap Refresh Status to verify via SMS.')
+                                                  : (isAr
+                                                      ? 'لحماية بياناتك الطبية، سيتم إرسال كود تأكيد حقيقي عبر رسالة SMS إلى رقمك المسجّل لدى الاستقبال (${_phoneMasked ?? ''}) بالكامل داخل التطبيق دون مغادرته.'
+                                                      : 'To protect your medical record, a real SMS OTP will be sent to your reception-registered number (${_phoneMasked ?? ''}) completely inside MNIS.'),
+                                          textAlign: TextAlign.center,
+                                          style: AppTypography.bodySm.copyWith(
+                                              color: cs.onSurfaceVariant),
+                                        ),
+                                        if (_verified &&
+                                            _verifiedAt != null) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            DateFormat.yMMMd(
+                                                    locale.languageCode)
+                                                .add_jm()
+                                                .format(_verifiedAt!),
+                                            style: AppTypography.labelSm
+                                                .copyWith(
+                                                    color:
+                                                        cs.onSurfaceVariant),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
+                                  if (_actionError != null) ...[
+                                    const SizedBox(height: 16),
+                                    Container(
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: cs.errorContainer,
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: cs.error.withOpacity(0.35),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Icon(
+                                            Icons.error_outline_rounded,
+                                            color: cs.onErrorContainer,
+                                            size: 20,
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              _actionError!,
+                                              style:
+                                                  AppTypography.bodySm.copyWith(
+                                                color: cs.onErrorContainer,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 20),
+                                  if (!_hasPhone)
+                                    OutlinedButton.icon(
+                                      onPressed: _loadStatus,
+                                      icon: const Icon(Icons.refresh_rounded),
+                                      label: Text(isAr
+                                          ? 'تحديث الحالة'
+                                          : 'Refresh Status'),
+                                    ),
+                                  if (_hasPhone && !_verified) ...[
+                                    if (!_codeSent)
+                                      FilledButton.icon(
+                                        onPressed: _sendingOtp
+                                            ? null
+                                            : () => _sendSmsOtp(),
+                                        icon: _sendingOtp
+                                            ? const SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : const Icon(Icons.sms_rounded),
+                                        label: Text(
+                                          isAr
+                                              ? 'إرسال كود التأكيد عبر SMS'
+                                              : 'Send SMS Verification Code',
+                                        ),
+                                        style: FilledButton.styleFrom(
+                                          minimumSize:
+                                              const Size.fromHeight(52),
+                                        ),
+                                      ),
+                                    if (_codeSent) ...[
+                                      AutofillGroup(
+                                        child: TextField(
+                                          controller: _otpCtrl,
+                                          autofillHints: const [
+                                            AutofillHints.oneTimeCode,
+                                          ],
+                                          keyboardType: TextInputType.number,
+                                          textInputAction: TextInputAction.done,
+                                          textDirection: TextDirection.ltr,
+                                          maxLength: 6,
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter
+                                                .digitsOnly,
+                                            LengthLimitingTextInputFormatter(6),
+                                          ],
+                                          onChanged: (val) {
+                                            final trimmed = val.trim();
+                                            if (trimmed.length == 6 &&
+                                                !_verifyingOtp &&
+                                                (_codeSent ||
+                                                    _webConfirmation != null)) {
+                                              unawaited(_verifyOtpCode());
+                                            }
+                                          },
+                                          onSubmitted: (_) => _verifyOtpCode(),
+                                          decoration: InputDecoration(
+                                            labelText: isAr
+                                                ? 'أدخل كود SMS المكون من 6 أرقام'
+                                                : 'Enter 6-digit SMS Code',
+                                            helperText: isAr
+                                                ? 'سيتم التقاط الكود وتعبئته تلقائياً داخل MNIS فور وصوله.'
+                                                : 'Incoming SMS code will auto-fill cleanly inside MNIS.',
+                                            helperMaxLines: 2,
+                                            prefixIcon:
+                                                const Icon(Icons.pin_rounded),
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      FilledButton.icon(
+                                        onPressed: _verifyingOtp
+                                            ? null
+                                            : _verifyOtpCode,
+                                        icon: _verifyingOtp
+                                            ? const SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : const Icon(
+                                                Icons.verified_rounded),
+                                        label: Text(
+                                          isAr
+                                              ? 'تأكيد الرقم والدخول'
+                                              : 'Verify & Enter App',
+                                        ),
+                                        style: FilledButton.styleFrom(
+                                          minimumSize:
+                                              const Size.fromHeight(52),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      TextButton(
+                                        onPressed: (_cooldownSeconds > 0 ||
+                                                _sendingOtp)
+                                            ? null
+                                            : () => _sendSmsOtp(),
+                                        child: Text(
+                                          _cooldownSeconds > 0
+                                              ? (isAr
+                                                  ? 'إعادة إرسال الكود خلال $_cooldownSeconds ث'
+                                                  : 'Resend code in ${_cooldownSeconds}s')
+                                              : (isAr
+                                                  ? 'إعادة إرسال كود SMS'
+                                                  : 'Resend SMS Code'),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                  if (_verified)
+                                    FilledButton.icon(
+                                      onPressed: () =>
+                                          context.go(AppRoutes.home),
+                                      icon: const Icon(
+                                          Icons.arrow_forward_rounded),
+                                      label: Text(isAr
+                                          ? 'الانتقال للتطبيق'
+                                          : 'Go to App'),
+                                      style: FilledButton.styleFrom(
+                                        minimumSize: const Size.fromHeight(52),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
-                          ],
-                          const SizedBox(height: 20),
-                          if (!_hasPhone)
-                            OutlinedButton.icon(
-                              onPressed: _loadStatus,
-                              icon: const Icon(Icons.refresh_rounded),
-                              label:
-                                  Text(isAr ? 'تحديث الحالة' : 'Refresh Status'),
-                            ),
-                          if (_hasPhone && !_verified) ...[
-                            if (!_codeSent)
-                              FilledButton.icon(
-                                onPressed:
-                                    _sendingOtp ? null : () => _sendSmsOtp(),
-                                icon: _sendingOtp
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Icon(Icons.sms_rounded),
-                                label: Text(
-                                  isAr
-                                      ? 'إرسال كود التأكيد عبر SMS'
-                                      : 'Send SMS Verification Code',
-                                ),
-                                style: FilledButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(52),
-                                ),
-                              ),
-                            if (_codeSent) ...[
-                              TextField(
-                                controller: _otpCtrl,
-                                keyboardType: TextInputType.number,
-                                textDirection: TextDirection.ltr,
-                                maxLength: 6,
-                                decoration: InputDecoration(
-                                  labelText: isAr
-                                      ? 'أدخل كود SMS المكون من 6 أرقام'
-                                      : 'Enter 6-digit SMS Code',
-                                  prefixIcon: const Icon(Icons.pin_rounded),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              FilledButton.icon(
-                                onPressed:
-                                    _verifyingOtp ? null : _verifyOtpCode,
-                                icon: _verifyingOtp
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Icon(Icons.verified_rounded),
-                                label: Text(
-                                  isAr
-                                      ? 'تأكيد الرقم والدخول'
-                                      : 'Verify & Enter App',
-                                ),
-                                style: FilledButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(52),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              TextButton(
-                                onPressed:
-                                    (_cooldownSeconds > 0 || _sendingOtp)
-                                        ? null
-                                        : () => _sendSmsOtp(),
-                                child: Text(
-                                  _cooldownSeconds > 0
-                                      ? (isAr
-                                          ? 'إعادة إرسال الكود خلال $_cooldownSeconds ث'
-                                          : 'Resend code in ${_cooldownSeconds}s')
-                                      : (isAr
-                                          ? 'إعادة إرسال كود SMS'
-                                          : 'Resend SMS Code'),
-                                ),
-                              ),
-                            ],
-                          ],
-                          if (_verified)
-                            FilledButton.icon(
-                              onPressed: () => context.go(AppRoutes.home),
-                              icon: const Icon(Icons.arrow_forward_rounded),
-                              label: Text(
-                                  isAr ? 'الانتقال للتطبيق' : 'Go to App'),
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size.fromHeight(52),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+                          ),
+                        ),
+              if (bridge != null) InAppSmsBridgeHost(controller: bridge),
+            ],
+          ),
         ),
       ),
     );

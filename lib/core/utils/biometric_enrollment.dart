@@ -8,18 +8,70 @@ import '../l10n/app_localizations.dart';
 import '../providers/session_provider.dart';
 import '../storage/secure_session_store.dart';
 
-/// Checks whether the device supports local biometrics or screen-lock unlock
-/// cleanly across Android Class 2/Class 3 sensors.
-Future<bool> isBiometricHardwareAvailable(LocalAuthentication localAuth) async {
-  if (kIsWeb) return false;
+class BiometricCapabilities {
+  final bool available;
+  final bool hasFace;
+  final bool hasFingerprint;
+
+  const BiometricCapabilities({
+    required this.available,
+    required this.hasFace,
+    required this.hasFingerprint,
+  });
+
+  String label(bool isAr) {
+    if (hasFace && hasFingerprint) {
+      return isAr ? 'البصمة أو بصمة الوجه' : 'Fingerprint & Face Unlock';
+    }
+    if (hasFace) {
+      return isAr ? 'بصمة الوجه' : 'Face Unlock';
+    }
+    if (hasFingerprint) {
+      return isAr ? 'بصمة الإصبع' : 'Fingerprint';
+    }
+    return isAr ? 'البيومترية / قفل الشاشة' : 'Biometrics / Device Lock';
+  }
+}
+
+/// Inspects available device biometric modalities (Fingerprint, Face Unlock,
+/// or Android screen-lock fallback).
+Future<BiometricCapabilities> getBiometricCapabilities(
+    LocalAuthentication localAuth) async {
+  if (kIsWeb) {
+    return const BiometricCapabilities(
+      available: false,
+      hasFace: false,
+      hasFingerprint: false,
+    );
+  }
   try {
     final supported = await localAuth.isDeviceSupported();
     final canCheck = await localAuth.canCheckBiometrics;
     final available = await localAuth.getAvailableBiometrics();
-    return supported || canCheck || available.isNotEmpty;
+    final hasFace = available.contains(BiometricType.face) ||
+        available.contains(BiometricType.weak);
+    final hasFingerprint = available.contains(BiometricType.fingerprint) ||
+        available.contains(BiometricType.strong) ||
+        (!hasFace && (supported || canCheck));
+    return BiometricCapabilities(
+      available: supported || canCheck || available.isNotEmpty,
+      hasFace: hasFace,
+      hasFingerprint: hasFingerprint,
+    );
   } catch (_) {
-    return false;
+    return const BiometricCapabilities(
+      available: false,
+      hasFace: false,
+      hasFingerprint: false,
+    );
   }
+}
+
+/// Checks whether the device supports local biometrics or screen-lock unlock
+/// cleanly across Android Class 2/Class 3 sensors.
+Future<bool> isBiometricHardwareAvailable(LocalAuthentication localAuth) async {
+  final caps = await getBiometricCapabilities(localAuth);
+  return caps.available;
 }
 
 /// Runs native Android/iOS biometric/device authentication with `biometricOnly: false`
@@ -63,21 +115,29 @@ Future<void> promptBiometricEnrollmentIfEligible(
   if (!forcePrompt && (prefs.getBool(promptedKey) ?? false)) return;
 
   final localAuth = LocalAuthentication();
-  final canCheck = await isBiometricHardwareAvailable(localAuth);
-  if (!canCheck || !context.mounted) return;
+  final caps = await getBiometricCapabilities(localAuth);
+  if (!caps.available || !context.mounted) return;
 
   final l = AppLocalizations.of(context);
   final isAr = l.isArabic;
+  final bioLabel = caps.label(isAr);
   final enable = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
-      icon: const Icon(Icons.fingerprint_rounded, size: 36),
-      title: Text(l.enableBiometricTitle),
+      icon: Icon(
+        caps.hasFace && !caps.hasFingerprint
+            ? Icons.face_rounded
+            : Icons.fingerprint_rounded,
+        size: 36,
+      ),
+      title: Text(
+        isAr ? 'تفعيل الدخول بـ $bioLabel' : 'Enable $bioLabel Sign-In',
+      ),
       content: Text(
         isAr
-            ? 'الآن بعد تأكيد حسابك وهاتفك بنجاح، يمكنك تفعيل الدخول بالبصمة لتسجيل الدخول لاحقاً بلمسة واحدة دون كتابة الرقم القومي وكلمة المرور.'
-            : 'Now that your account and phone are verified, enable fingerprint sign-in to access MNIS next time without typing your National ID and password.',
+            ? 'الآن بعد تأكيد حسابك وهاتفك بنجاح، يمكنك تفعيل الدخول عبر ($bioLabel) لتسجيل الدخول لاحقاً بلمسة أو نظرة واحدة دون كتابة الرقم القومي وكلمة المرور.'
+            : 'Now that your account and phone are verified, enable $bioLabel sign-in to access MNIS next time without typing your National ID and password.',
       ),
       actions: [
         TextButton(
@@ -100,8 +160,8 @@ Future<void> promptBiometricEnrollmentIfEligible(
   final authenticated = await authenticateWithBiometrics(
     localAuth,
     reason: isAr
-        ? 'امسح بصمتك لتفعيل تسجيل الدخول بالبصمة'
-        : 'Scan your fingerprint to enable biometric sign-in',
+        ? 'تحقق عبر $bioLabel لتفعيل تسجيل الدخول السريع'
+        : 'Verify with $bioLabel to enable quick sign-in',
   );
   if (!authenticated) {
     if (context.mounted) {
@@ -120,8 +180,8 @@ Future<void> promptBiometricEnrollmentIfEligible(
         behavior: SnackBarBehavior.floating,
         content: Text(
           isAr
-              ? 'تم تفعيل تسجيل الدخول بالبصمة بنجاح ✓'
-              : 'Biometric sign-in enabled ✓',
+              ? 'تم تفعيل الدخول عبر $bioLabel بنجاح ✓'
+              : '$bioLabel sign-in enabled ✓',
         ),
       ),
     );

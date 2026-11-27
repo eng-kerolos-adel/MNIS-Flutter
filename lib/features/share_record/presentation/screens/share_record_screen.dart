@@ -13,6 +13,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/utils/providers.dart';
 import '../../../../core/utils/shared_widgets.dart';
+import '../../../../core/widgets/responsive_center.dart';
 
 class ShareRecordScreen extends ConsumerStatefulWidget {
   const ShareRecordScreen({super.key});
@@ -73,6 +74,7 @@ class _ShareRecordScreenState extends ConsumerState<ShareRecordScreen> {
     return Scaffold(
       backgroundColor: cs.surface,
       appBar: AppBar(
+        centerTitle: true,
         title: Text(l.shareRecordTitle),
         leading: IconButton(
           icon: Icon(isAr ? Icons.arrow_forward_rounded : Icons.arrow_back_rounded),
@@ -84,7 +86,9 @@ class _ShareRecordScreenState extends ConsumerState<ShareRecordScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
-            child: Column(
+            child: ResponsiveCenter(
+              maxWidth: 480,
+              child: Column(
               children: [
                 Container(
                   width: 72, height: 72,
@@ -161,6 +165,7 @@ class _ShareRecordScreenState extends ConsumerState<ShareRecordScreen> {
                   ),
                 ],
               ],
+            ),
             ),
           ),
         ),

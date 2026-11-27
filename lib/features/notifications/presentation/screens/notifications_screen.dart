@@ -9,6 +9,7 @@ import '../../../../core/utils/providers.dart';
 import '../../../../core/providers/notifications_provider.dart';
 import '../../../../core/providers/session_provider.dart';
 import '../../../../core/widgets/async_view.dart';
+import '../../../../core/widgets/responsive_center.dart';
 
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
@@ -24,6 +25,7 @@ class NotificationsScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: cs.surface,
       appBar: AppBar(
+        centerTitle: true,
         title: Text(isAr ? "الإشعارات" : "Notifications",
             style: AppTypography.headlineMd.copyWith(color: cs.onSurface)),
         backgroundColor: cs.surface,
@@ -38,29 +40,18 @@ class NotificationsScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(notificationsProvider),
           builder: (context, notifs) {
             if (notifs.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.notifications_off_outlined,
-                        size: 64, color: cs.onSurfaceVariant.withOpacity(0.5)),
-                    const SizedBox(height: 16),
-                    Text(
-                        isAr
-                            ? "لا توجد إشعارات حالياً"
-                            : "No notifications yet",
-                        style: AppTypography.bodyMd
-                            .copyWith(color: cs.onSurfaceVariant)),
-                  ],
-                ),
+              return EmptyState(
+                icon: Icons.notifications_off_outlined,
+                message: isAr ? "لا توجد إشعارات حالياً" : "No notifications yet",
               );
             }
-            return RefreshIndicator(
-              onRefresh: () async => ref.refresh(notificationsProvider.future),
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: notifs.length,
-                itemBuilder: (context, index) {
+            return ResponsiveCenter(
+              child: RefreshIndicator(
+                onRefresh: () async => ref.refresh(notificationsProvider.future),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: notifs.length,
+                  itemBuilder: (context, index) {
                   final n = notifs[index];
                   final isUnread = n.readAt == null;
                   return Card(
@@ -146,6 +137,7 @@ class NotificationsScreen extends ConsumerWidget {
                     ),
                   );
                 },
+              ),
               ),
             );
           },

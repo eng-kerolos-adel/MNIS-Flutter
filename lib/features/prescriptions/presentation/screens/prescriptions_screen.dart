@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' hide TextDirection;
@@ -8,6 +10,8 @@ import '../../../../core/models/appointment_models.dart';
 import '../../../../core/models/models.dart';
 import '../../../../core/providers/data_providers.dart';
 import '../../../../core/providers/session_provider.dart';
+import '../../../../core/router/app_router.dart';
+import '../../../../core/services/medication_reminder_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/error_messages.dart';
@@ -16,6 +20,7 @@ import '../../../../core/utils/shared_widgets.dart';
 import '../../../../core/widgets/account_sheet.dart';
 import '../../../../core/widgets/async_view.dart';
 import '../../../../core/widgets/patient_avatar.dart';
+import '../../../../core/widgets/responsive_center.dart';
 
 enum _Filter { all, awaitingPharmacy, dispensed, rejected }
 
@@ -38,6 +43,7 @@ class _PrescriptionsScreenState extends ConsumerState<PrescriptionsScreen> {
     final rxAsync = ref.watch(prescriptionsProvider);
     final profileAsync = ref.watch(profileProvider);
     final renewalsAsync = ref.watch(renewalsProvider);
+    final remindersAsync = ref.watch(medicationRemindersProvider);
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -47,9 +53,14 @@ class _PrescriptionsScreenState extends ConsumerState<PrescriptionsScreen> {
           onRefresh: () async {
             ref.invalidate(prescriptionsProvider);
             ref.invalidate(renewalsProvider);
+            ref.invalidate(medicationRemindersProvider);
             await ref.read(prescriptionsProvider.future).catchError((_) => <PrescriptionModel>[]);
           },
           child: CustomScrollView(
+            controller: AppRoutes.tabScrollController(3),
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
             slivers: [
               SliverAppBar(
                 pinned: true,
@@ -88,36 +99,118 @@ class _PrescriptionsScreenState extends ConsumerState<PrescriptionsScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          width: 40, height: 40,
-                          decoration: BoxDecoration(
-                              color: cs.secondaryContainer.withOpacity(0.4), shape: BoxShape.circle),
-                          child: Icon(Icons.medication_rounded, size: 20, color: cs.primary),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                    ResponsiveCenter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: cs.secondaryContainer.withOpacity(0.45),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(Icons.medication_rounded,
+                                    size: 22, color: cs.primary),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(l.prescriptionsTitle,
+                                        style: AppTypography.headlineSm
+                                            .copyWith(color: cs.primary)),
+                                    Text(l.prescriptionsSub,
+                                        style: AppTypography.labelSm.copyWith(
+                                            color: cs.onSurfaceVariant)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          AsyncValueView<PatientProfile>(
+                            value: profileAsync,
+                            isAr: isAr,
+                            loadingHeight: 70,
+                            builder: (context, patient) => _SafetyCheckBanner(
+                                l: l,
+                                cs: cs,
+                                isAr: isAr,
+                                allergies: patient.allergies,
+                                locale: locale),
+                          ),
+                          const SizedBox(height: 12),
+                    remindersAsync.when(
+                      data: (reminders) {
+                        if (reminders.isEmpty) return const SizedBox.shrink();
+                        unawaited(MedicationReminderService.instance
+                            .syncReminders(reminders, isAr: isAr));
+                        return Column(
                           children: [
-                            Text(l.prescriptionsTitle,
-                                style: AppTypography.headlineSm.copyWith(color: cs.primary)),
-                            Text(l.prescriptionsSub,
-                                style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
+                            _MedicationRemindersPanel(
+                              reminders: reminders,
+                              isAr: isAr,
+                              onToggle: (rem, active) async {
+                                await ref
+                                    .read(repositoryProvider)
+                                    .updateMedicationReminder(
+                                      rem.id,
+                                      isActive: active,
+                                    );
+                                ref.invalidate(medicationRemindersProvider);
+                              },
+                              onTaken: (rem) async {
+                                await ref
+                                    .read(repositoryProvider)
+                                    .markMedicationDoseTaken(rem.id);
+                                ref.invalidate(medicationRemindersProvider);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      behavior: SnackBarBehavior.floating,
+                                      content: Text(
+                                        isAr
+                                            ? 'تم تسجيل تناول الجرعة ✓ (${rem.drugName.pick(locale)})'
+                                            : 'Dose logged ✓ (${rem.drugName.pick(locale)})',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                              onTestAlarm: (rem) async {
+                                await MedicationReminderService.instance
+                                    .scheduleTestReminderIn5Seconds(
+                                  rem,
+                                  isAr: isAr,
+                                );
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      behavior: SnackBarBehavior.floating,
+                                      content: Text(
+                                        isAr
+                                            ? 'سيصلك إشعار تذكير تجريبي خلال 5 ثوانٍ 🔔'
+                                            : 'Test dose notification scheduled in 5 seconds 🔔',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 14),
                           ],
-                        ),
-                      ],
+                        );
+                      },
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
                     ),
-                    const SizedBox(height: 14),
-                    AsyncValueView<PatientProfile>(
-                      value: profileAsync,
-                      isAr: isAr,
-                      loadingHeight: 70,
-                      builder: (context, patient) => _SafetyCheckBanner(
-                          l: l, cs: cs, isAr: isAr, allergies: patient.allergies, locale: locale),
-                    ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 2),
                     AsyncValueView<List<PrescriptionModel>>(
                       value: rxAsync,
                       isAr: isAr,
@@ -139,30 +232,27 @@ class _PrescriptionsScreenState extends ConsumerState<PrescriptionsScreen> {
                             list.where((p) => p.status == RxStatus.rejected).toList(),
                         };
                         return Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            SizedBox(
-                              height: 36,
-                              child: ListView(
-                                scrollDirection: Axis.horizontal,
-                                reverse: isAr,
+                            Center(
+                              child: Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 8,
+                                runSpacing: 8,
                                 children: [
                                   _Chip(
                                       label: '${isAr ? "الكل" : "All"} (${list.length})',
                                       selected: _filter == _Filter.all,
                                       onTap: () => setState(() => _filter = _Filter.all), cs: cs),
-                                  const SizedBox(width: 8),
                                   _Chip(
                                       label: l.activePrescriptions,
                                       selected: _filter == _Filter.awaitingPharmacy,
                                       onTap: () => setState(() => _filter = _Filter.awaitingPharmacy),
                                       cs: cs),
-                                  const SizedBox(width: 8),
                                   _Chip(
                                       label: l.dispensed,
                                       selected: _filter == _Filter.dispensed,
                                       onTap: () => setState(() => _filter = _Filter.dispensed), cs: cs),
-                                  const SizedBox(width: 8),
                                   _Chip(
                                       label: isAr ? 'مرفوضة' : 'Rejected',
                                       selected: _filter == _Filter.rejected,
@@ -196,6 +286,9 @@ class _PrescriptionsScreenState extends ConsumerState<PrescriptionsScreen> {
                               cs: cs, isAr: isAr, locale: locale, conditions: patient.chronicConditions),
                     ),
                     const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
                   ]),
                 ),
               ),
@@ -255,31 +348,42 @@ class _SafetyCheckBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration:
+                BoxDecoration(color: cs.tertiary, shape: BoxShape.circle),
+            child: Icon(Icons.verified_user_rounded,
+                size: 18, color: cs.onTertiary),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    StatusBadge(
-                        label: l.safe100, backgroundColor: cs.tertiary, textColor: cs.onTertiary, fontSize: 10),
+                    Flexible(
+                      child: Text(l.safetyCheck,
+                          style: AppTypography.labelLg
+                              .copyWith(color: cs.tertiary)),
+                    ),
                     const SizedBox(width: 8),
-                    Text(l.safetyCheck, style: AppTypography.labelLg.copyWith(color: cs.tertiary)),
+                    StatusBadge(
+                        label: l.safe100,
+                        backgroundColor: cs.tertiary,
+                        textColor: cs.onTertiary,
+                        fontSize: 10),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(l.safetyCheckBody(hasAllergies, names),
-                    style: AppTypography.bodySm.copyWith(color: cs.onSurfaceVariant),
-                    textAlign: TextAlign.right),
+                    style: AppTypography.bodySm
+                        .copyWith(color: cs.onSurfaceVariant),
+                    textAlign: TextAlign.start),
               ],
             ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(color: cs.tertiary, shape: BoxShape.circle),
-            child: Icon(Icons.verified_user_rounded, size: 18, color: cs.onTertiary),
           ),
         ],
       ),
@@ -366,41 +470,57 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
       return Container(
         decoration: BoxDecoration(
           color: cs.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
           boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.06), blurRadius: 12)],
         ),
         child: Stack(
           children: [
-            Positioned(
-              left: -14, bottom: -14,
+            PositionedDirectional(
+              end: -14,
+              bottom: -14,
               child: Icon(Icons.local_hospital_rounded, size: 64, color: cs.primary.withOpacity(0.05)),
             ),
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      StatusBadge(label: status.label, backgroundColor: status.bg, textColor: status.fg, fontSize: 10),
                       Row(children: [
-                        Icon(Icons.receipt_long_rounded, size: 16, color: cs.secondary),
-                        const SizedBox(width: 4),
-                        Text('#${rx.code}', style: AppTypography.headlineSm.copyWith(color: cs.primary)),
+                        Icon(Icons.receipt_long_rounded, size: 17, color: cs.secondary),
+                        const SizedBox(width: 6),
+                        Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Text('#${rx.code}',
+                              style: AppTypography.headlineSm.copyWith(color: cs.primary)),
+                        ),
                       ]),
+                      StatusBadge(
+                        label: status.label,
+                        backgroundColor: status.bg,
+                        textColor: status.fg,
+                        fontSize: 10,
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(rx.diagnosis.pick(widget.locale),
-                      style: AppTypography.bodySm.copyWith(color: cs.onSurfaceVariant),
-                      textAlign: TextAlign.right),
+                      style: AppTypography.bodyMd.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.start),
                   if (rx.physicianName != null &&
                       (rx.physicianName!.ar.isNotEmpty || rx.physicianName!.en.isNotEmpty)) ...[
                     const SizedBox(height: 4),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisAlignment: MainAxisAlignment.start,
                       children: [
+                        Icon(Icons.medical_services_rounded, size: 13, color: cs.secondary),
+                        const SizedBox(width: 6),
                         Flexible(
                           child: Text(
                             rx.physicianSpeciality != null &&
@@ -412,8 +532,6 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.medical_services_rounded, size: 13, color: cs.secondary),
                       ],
                     ),
                   ],
@@ -423,12 +541,13 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: cs.surfaceContainer, borderRadius: BorderRadius.circular(10)),
+                          decoration: BoxDecoration(color: cs.surfaceContainer, borderRadius: BorderRadius.circular(12)),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(isAr ? 'تاريخ التحرير' : 'Issue date',
                                   style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
+                              const SizedBox(height: 2),
                               Text(df.format(rx.createdAt), style: AppTypography.labelLg.copyWith(color: cs.primary)),
                               if (rx.dispensedAt != null)
                                 Text('${isAr ? "صُرفت" : "Dispensed"}: ${df.format(rx.dispensedAt!)}',
@@ -441,14 +560,15 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: cs.surfaceContainer, borderRadius: BorderRadius.circular(10)),
+                          decoration: BoxDecoration(color: cs.surfaceContainer, borderRadius: BorderRadius.circular(12)),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(isAr ? 'التأمين الصحي' : 'Health insurance',
                                   style: AppTypography.labelSm.copyWith(color: cs.onSurfaceVariant)),
+                              const SizedBox(height: 2),
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
+                                mainAxisAlignment: MainAxisAlignment.start,
                                 children: [
                                   Icon(Icons.health_and_safety_rounded,
                                       size: 14, color: widget.insuranceActive ? cs.tertiary : cs.error),
@@ -472,57 +592,85 @@ class _PrescriptionCardState extends ConsumerState<_PrescriptionCard> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      GestureDetector(
-                        onTap: () => setState(() => _expanded = !_expanded),
-                        child: Row(children: [
-                          Icon(_expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                              color: cs.secondary, size: 18),
-                          Text(_expanded ? (isAr ? 'إخفاء' : 'Hide') : (isAr ? 'عرض' : 'Show'),
-                              style: AppTypography.labelMd.copyWith(color: cs.secondary)),
-                        ]),
-                      ),
                       Text(isAr ? 'الأدوية (${rx.items.length})' : 'Medications (${rx.items.length})',
                           style: AppTypography.labelLg.copyWith(color: cs.onSurface)),
-                    ],
-                  ),
-                  if (_expanded) ...[
-                    const SizedBox(height: 8),
-                    for (final med in rx.items)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration:
-                            BoxDecoration(color: cs.secondaryContainer.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text('${med.name.pick(widget.locale)} ${med.dose}',
-                                      style: AppTypography.headlineSm.copyWith(color: cs.onSurface)),
-                                  Text(med.frequency.pick(widget.locale),
-                                      style: AppTypography.bodySm.copyWith(color: cs.onSurfaceVariant)),
-                                  const SizedBox(height: 4),
-                                  StatusBadge(
-                                    label: isAr ? '×${med.quantity}' : '×${med.quantity}',
-                                    backgroundColor: cs.surfaceContainerLowest.withOpacity(0.8),
-                                    textColor: cs.secondary,
-                                    fontSize: 10,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Container(
-                              width: 40, height: 40,
-                              decoration: BoxDecoration(color: cs.secondary.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
-                              child: Icon(Icons.medication_rounded, size: 20, color: cs.secondary),
-                            ),
-                          ],
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => setState(() => _expanded = !_expanded),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          child: Row(children: [
+                            Text(_expanded ? (isAr ? 'إخفاء' : 'Hide') : (isAr ? 'عرض' : 'Show'),
+                                style: AppTypography.labelMd.copyWith(color: cs.secondary)),
+                            const SizedBox(width: 2),
+                            Icon(_expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                                color: cs.secondary, size: 18),
+                          ]),
                         ),
                       ),
-                  ],
+                    ],
+                  ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    child: !_expanded
+                        ? const SizedBox.shrink()
+                        : Column(
+                            children: [
+                              const SizedBox(height: 8),
+                              for (final med in rx.items)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: cs.secondaryContainer.withOpacity(0.22),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: cs.secondary.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Icon(Icons.medication_rounded,
+                                            size: 20, color: cs.secondary),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              '${med.name.pick(widget.locale)} ${med.dose}',
+                                              style: AppTypography.headlineSm
+                                                  .copyWith(color: cs.onSurface),
+                                            ),
+                                            Text(
+                                              med.frequency.pick(widget.locale),
+                                              style: AppTypography.bodySm
+                                                  .copyWith(color: cs.onSurfaceVariant),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      StatusBadge(
+                                        label: '×${med.quantity}',
+                                        backgroundColor:
+                                            cs.surfaceContainerLowest.withOpacity(0.9),
+                                        textColor: cs.secondary,
+                                        fontSize: 10,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                  ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -597,23 +745,25 @@ class _ChronicConditionsCard extends StatelessWidget {
         border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              Text(isAr ? 'الأمراض المزمنة المسجلة' : 'Registered chronic conditions',
+                  style: AppTypography.headlineSm.copyWith(color: cs.primary)),
               StatusBadge(
                   label: isAr ? 'مزمن' : 'Chronic',
                   backgroundColor: cs.surfaceContainerHigh,
                   textColor: cs.onSurfaceVariant,
                   fontSize: 10),
-              Text(isAr ? 'الأمراض المزمنة المسجلة' : 'Registered chronic conditions',
-                  style: AppTypography.headlineSm.copyWith(color: cs.primary)),
             ],
           ),
           const SizedBox(height: 12),
           Wrap(
-            spacing: 8, runSpacing: 8, alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.start,
             children: conditions
                 .map((c) => Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -626,6 +776,172 @@ class _ChronicConditionsCard extends StatelessWidget {
                     ))
                 .toList(),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MedicationRemindersPanel extends StatelessWidget {
+  final List<MedicationReminderModel> reminders;
+  final bool isAr;
+  final Future<void> Function(MedicationReminderModel rem, bool active) onToggle;
+  final Future<void> Function(MedicationReminderModel rem) onTaken;
+  final Future<void> Function(MedicationReminderModel rem) onTestAlarm;
+
+  const _MedicationRemindersPanel({
+    required this.reminders,
+    required this.isAr,
+    required this.onToggle,
+    required this.onTaken,
+    required this.onTestAlarm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final loc = Locale(isAr ? 'ar' : 'en');
+    final activeCount = reminders.where((r) => r.isActive).length;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.secondaryContainer.withOpacity(0.28),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.secondary.withOpacity(0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.alarm_on_rounded, color: cs.secondary, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isAr
+                          ? 'تذكيرات مواعيد الأدوية المصروفة'
+                          : 'Dispensed Medication Dose Reminders',
+                      style: AppTypography.headlineSm.copyWith(color: cs.primary),
+                    ),
+                    Text(
+                      isAr
+                          ? 'تُفعَّل تلقائياً عند صرف الصيدلي للروشتة ($activeCount نشط)'
+                          : 'Auto-scheduled when pharmacy dispenses your Rx ($activeCount active)',
+                      style: AppTypography.labelSm
+                          .copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final rem in reminders)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              rem.drugName.pick(loc),
+                              style: AppTypography.labelLg
+                                  .copyWith(color: cs.onSurface),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${rem.dose} • ${rem.frequency.pick(loc)} • ${isAr ? "متبقي ${rem.daysRemaining} يوم" : "${rem.daysRemaining}d left"}',
+                              style: AppTypography.labelSm
+                                  .copyWith(color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch.adaptive(
+                        value: rem.isActive,
+                        onChanged: (val) => onToggle(rem, val),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final t in rem.scheduleTimes)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: cs.primaryContainer.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '⏰ $t',
+                            style: AppTypography.labelSm
+                                .copyWith(color: cs.primary),
+                          ),
+                        ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          isAr
+                              ? 'الجرعات المسجلة: ${rem.dosesTakenCount}'
+                              : 'Logged: ${rem.dosesTakenCount}',
+                          style: AppTypography.labelSm,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.tonalIcon(
+                          onPressed: () => onTaken(rem),
+                          icon: const Icon(Icons.check_circle_outline_rounded,
+                              size: 16),
+                          label: Text(
+                            isAr ? 'أخذت الجرعة ✓' : 'Mark Taken',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => onTestAlarm(rem),
+                        icon: const Icon(Icons.notifications_active_outlined,
+                            size: 16),
+                        label: Text(
+                          isAr ? 'تجربة تنبيه (5 ث)' : 'Test 5s',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

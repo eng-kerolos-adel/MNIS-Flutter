@@ -108,10 +108,24 @@ class MnisRepository {
         _asMap,
       ));
 
-  Future<List<LabFacilityOption>> labs() async =>
-      (await _api.get('/schedule/labs', _asList))
-          .map(LabFacilityOption.fromJson)
-          .toList();
+  Future<List<LabFacilityOption>> labs({
+    double? lat,
+    double? lng,
+    String? governorate,
+    bool strictGeo = false,
+  }) async {
+    final q = <String>[
+      if (lat != null) 'lat=$lat',
+      if (lng != null) 'lng=$lng',
+      if (governorate != null && governorate.isNotEmpty)
+        'governorate=${Uri.encodeQueryComponent(governorate)}',
+      if (strictGeo) 'strictGeo=true',
+    ].join('&');
+    final path = q.isEmpty ? '/schedule/labs' : '/schedule/labs?$q';
+    return (await _api.get(path, _asList))
+        .map(LabFacilityOption.fromJson)
+        .toList();
+  }
 
   Future<List<String>> doctorSlots(String doctorId, String dateYmd) async {
     final rows = await _api.get('/schedule/doctors/$doctorId/slots?date=$dateYmd', _asList);
@@ -147,8 +161,25 @@ class MnisRepository {
   Future<void> cancelAppointment(String id) =>
       _api.delete('/me/appointments/$id', (_) => null);
 
-  Future<List<DoctorOption>> doctors() async =>
-      (await _api.get('/schedule/doctors', _asList)).map(DoctorOption.fromJson).toList();
+  Future<List<DoctorOption>> doctors({
+    double? lat,
+    double? lng,
+    String? governorate,
+    bool strictGeo = false,
+  }) async {
+    final q = <String>[
+      if (lat != null) 'lat=$lat',
+      if (lng != null) 'lng=$lng',
+      if (governorate != null && governorate.isNotEmpty)
+        'governorate=${Uri.encodeQueryComponent(governorate)}',
+      if (strictGeo) 'strictGeo=true',
+    ].join('&');
+    final path = q.isEmpty ? '/schedule/doctors' : '/schedule/doctors?$q';
+    return (await _api.get(path, _asList)).map(DoctorOption.fromJson).toList();
+  }
+
+  Future<Map<String, dynamic>> resolveLocation(double lat, double lng) =>
+      _api.get('/schedule/resolve-location?lat=$lat&lng=$lng', _asMap);
 
   // ── Prescription renewals ────────────────────────────────────────────
   Future<List<RenewalRequestModel>> renewals() async =>
@@ -207,6 +238,31 @@ class MnisRepository {
         '/auth/verify-phone',
         {'firebaseIdToken': firebaseIdToken},
         _asMap,
+      );
+
+  // ── Periodic Medication Reminders (Dispensed Prescriptions) ───────────
+  Future<List<MedicationReminderModel>> medicationReminders() async =>
+      (await _api.get('/me/medication-reminders', _asList))
+          .map(MedicationReminderModel.fromJson)
+          .toList();
+
+  Future<MedicationReminderModel> updateMedicationReminder(
+    String id, {
+    bool? isActive,
+    List<String>? scheduleTimes,
+  }) async =>
+      MedicationReminderModel.fromJson(await _api.patch(
+        '/me/medication-reminders/$id',
+        {
+          if (isActive != null) 'isActive': isActive,
+          if (scheduleTimes != null) 'scheduleTimes': scheduleTimes,
+        },
+        _asMap,
+      ));
+
+  Future<MedicationReminderModel> markMedicationDoseTaken(String id) async =>
+      MedicationReminderModel.fromJson(
+        await _api.post('/me/medication-reminders/$id/taken', {}, _asMap),
       );
 }
 

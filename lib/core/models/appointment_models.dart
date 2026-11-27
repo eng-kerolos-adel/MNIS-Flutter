@@ -138,15 +138,38 @@ class DoctorOption {
   final Bilingual speciality;
   final Bilingual facility;
   final String facilityType;
+  final String? governorate;
+  final String? governorateAr;
+  final String? governorateEn;
+  final String? district;
+  final String? addressAr;
+  final String? addressEn;
+  final double? latitude;
+  final double? longitude;
+  final double? distanceKm;
+
   const DoctorOption(
     this.id,
     this.name,
     this.speciality,
     this.facility, {
     this.facilityType = 'CLINIC',
+    this.governorate,
+    this.governorateAr,
+    this.governorateEn,
+    this.district,
+    this.addressAr,
+    this.addressEn,
+    this.latitude,
+    this.longitude,
+    this.distanceKm,
   });
 
   bool get isClinicOnly => facilityType.toUpperCase() != 'HOSPITAL';
+
+  String formattedAddress(bool isAr) =>
+      (isAr ? (addressAr ?? governorateAr) : (addressEn ?? governorateEn)) ??
+      '';
 
   factory DoctorOption.fromJson(Map<String, dynamic> j) => DoctorOption(
         j['id'] as String,
@@ -154,6 +177,15 @@ class DoctorOption {
         Bilingual.of({'en': j['specialityEn'], 'ar': j['specialityAr']}),
         Bilingual.of({'en': j['facilityEn'], 'ar': j['facilityAr']}),
         facilityType: (j['facilityType'] as String?) ?? 'CLINIC',
+        governorate: j['governorate'] as String?,
+        governorateAr: j['governorateAr'] as String?,
+        governorateEn: j['governorateEn'] as String?,
+        district: j['district'] as String?,
+        addressAr: j['addressAr'] as String?,
+        addressEn: j['addressEn'] as String?,
+        latitude: (j['latitude'] as num?)?.toDouble(),
+        longitude: (j['longitude'] as num?)?.toDouble(),
+        distanceKm: (j['distanceKm'] as num?)?.toDouble(),
       );
 }
 
@@ -162,15 +194,36 @@ class LabFacilityOption {
   final Bilingual name;
   final Bilingual staffName;
   final String labSubType;
+  final String? governorate;
+  final String? governorateAr;
+  final String? governorateEn;
+  final String? addressAr;
+  final String? addressEn;
+  final double? latitude;
+  final double? longitude;
+  final double? distanceKm;
+
   const LabFacilityOption(
     this.id,
     this.name,
     this.staffName, {
     this.labSubType = 'ANALYSIS',
+    this.governorate,
+    this.governorateAr,
+    this.governorateEn,
+    this.addressAr,
+    this.addressEn,
+    this.latitude,
+    this.longitude,
+    this.distanceKm,
   });
 
   bool get isRadiology => labSubType.toUpperCase() == 'RADIOLOGY';
   bool get isAnalysis => !isRadiology;
+
+  String formattedAddress(bool isAr) =>
+      (isAr ? (addressAr ?? governorateAr) : (addressEn ?? governorateEn)) ??
+      '';
 
   factory LabFacilityOption.fromJson(Map<String, dynamic> j) => LabFacilityOption(
         j['id'] as String,
@@ -183,6 +236,14 @@ class LabFacilityOption {
           'ar': j['staffNameAr'] ?? j['fullNameAr'],
         }),
         labSubType: (j['labSubType'] as String?) ?? 'ANALYSIS',
+        governorate: j['governorate'] as String?,
+        governorateAr: j['governorateAr'] as String?,
+        governorateEn: j['governorateEn'] as String?,
+        addressAr: j['addressAr'] as String?,
+        addressEn: j['addressEn'] as String?,
+        latitude: (j['latitude'] as num?)?.toDouble(),
+        longitude: (j['longitude'] as num?)?.toDouble(),
+        distanceKm: (j['distanceKm'] as num?)?.toDouble(),
       );
 }
 

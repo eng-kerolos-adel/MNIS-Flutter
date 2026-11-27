@@ -9,6 +9,7 @@ import 'core/l10n/app_localizations.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/providers.dart';
+import 'core/models/models.dart';
 import 'core/providers/app_lock_provider.dart';
 import 'core/providers/session_provider.dart';
 import 'core/storage/secure_session_store.dart';
@@ -34,6 +35,30 @@ void main() async {
   runApp(const ProviderScope(child: MnisApp()));
 }
 
+/// Determines whether returning from background should display the biometric
+/// app-lock screen. Transient OS permission/overlay pauses and active onboarding,
+/// authentication, password-change, or SMS verification routes are never
+/// interrupted so OTP confirmation state is preserved safely.
+bool shouldLockOnResume({
+  required String currentPath,
+  required bool biometricEnabled,
+  required SessionUser? user,
+  required Duration backgroundDuration,
+}) {
+  if (!biometricEnabled || user == null) return false;
+  if (backgroundDuration < const Duration(seconds: 3)) return false;
+  if (user.mustChangePassword || user.requiresPhoneVerification) return false;
+  const protectedRoutes = {
+    AppRoutes.splash,
+    AppRoutes.onboarding,
+    AppRoutes.login,
+    AppRoutes.changePassword,
+    AppRoutes.verifyPhone,
+    AppRoutes.appLock,
+  };
+  return !protectedRoutes.contains(currentPath);
+}
+
 class MnisApp extends ConsumerStatefulWidget {
   const MnisApp({super.key});
 
@@ -43,6 +68,7 @@ class MnisApp extends ConsumerStatefulWidget {
 
 class _MnisAppState extends ConsumerState<MnisApp> with WidgetsBindingObserver {
   AppLifecycleState? _lastState;
+  DateTime? _pausedAt;
 
   @override
   void initState() {
@@ -58,21 +84,37 @@ class _MnisAppState extends ConsumerState<MnisApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Re-lock whenever the app comes back from the background. This is what
-    // makes biometric a real app lock rather than a check that only ever
-    // runs once right after login. A momentary `inactive` (an incoming call
-    // alert, the iOS app switcher) does not count as "backgrounded" — only
-    // actually leaving (`paused`) and returning does.
+    // Re-lock only when genuinely returning from background on an unlocked,
+    // fully verified screen — never mid-verification or on brief OS overlays.
     final wasBackgrounded = _lastState == AppLifecycleState.paused;
     _lastState = state;
+    if (state == AppLifecycleState.paused) {
+      _pausedAt ??= DateTime.now();
+      return;
+    }
     if (state != AppLifecycleState.resumed || !wasBackgrounded) return;
+    final pausedAt = _pausedAt;
+    _pausedAt = null;
+    final bgDuration = pausedAt == null
+        ? Duration.zero
+        : DateTime.now().difference(pausedAt);
 
     SecureSessionStore.instance.readBiometricEnabled().then((enabled) {
-      if (!enabled) return;
-      final hasSession = ref.read(sessionControllerProvider).value != null;
-      if (!hasSession) return;
+      if (!mounted) return;
+      final router = ref.read(routerProvider);
+      final currentPath =
+          router.routerDelegate.currentConfiguration.uri.path;
+      final user = ref.read(sessionControllerProvider).value;
+      if (!shouldLockOnResume(
+        currentPath: currentPath,
+        biometricEnabled: enabled,
+        user: user,
+        backgroundDuration: bgDuration,
+      )) {
+        return;
+      }
       ref.read(appUnlockedProvider.notifier).state = false;
-      ref.read(routerProvider).go(AppRoutes.appLock);
+      router.go(AppRoutes.appLock);
     });
   }
 

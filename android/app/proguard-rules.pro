@@ -7,3 +7,15 @@
 # Play Core (Flutter's deferred-components hook; harmless to keep even if unused)
 -keep class com.google.android.play.core.** { *; }
 -dontwarn com.google.android.play.core.**
+
+# Play Integrity & Native reCAPTCHA Enterprise
+-keep class com.google.android.play.core.integrity.** { *; }
+-keep class com.google.android.recaptcha.** { *; }
+-dontwarn com.google.android.recaptcha.**
+-keep class com.google.android.gms.common.api.Status { *; }
+
+# Google Play Services SMS Retriever / Phone Auth classes
+-keep class com.google.android.gms.auth.api.phone.** { *; }
+
+# AndroidX Custom Tabs fallback binding
+-keep class androidx.browser.customtabs.** { *; }

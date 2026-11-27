@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,6 +29,7 @@ abstract class AppRoutes {
   static const labResults = '/lab-results';
   static const prescriptions = '/prescriptions';
   static const emergencyQr = '/emergency-qr';
+  static const qrTab = '/qr-tab';
   static const shell = '/shell';
   static const changePassword = '/change-password';
   static const appointments = '/appointments';
@@ -36,6 +38,54 @@ abstract class AppRoutes {
   static const documents = '/documents';
   static const notifications = '/notifications';
   static const verifyPhone = '/verify-phone';
+
+  static final List<ScrollController> _tabScrollControllers =
+      List.generate(5, (_) => ScrollController());
+
+  static ScrollController tabScrollController(int index) =>
+      _tabScrollControllers[index.clamp(0, 4)];
+
+  static void scrollTabToTop(int index) {
+    final ctrl = tabScrollController(index);
+    if (ctrl.hasClients && ctrl.offset > 0) {
+      HapticFeedback.lightImpact();
+      ctrl.animateTo(
+        0,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  /// Unified navigation helper that eliminates stacked duplicate screens:
+  /// - Works safely from any BuildContext (modal bottom sheets, root navigator,
+  ///   dialogs, or shell branches) via [GoRouter.maybeOf] without ever throwing
+  ///   `No GoRouterState found in context`.
+  /// - Any primary shell tab (`home`, `medicalFile`, `labResults`,
+  ///   `prescriptions`, `qrTab`, or `emergencyQr`) switches directly to that
+  ///   bottom-navigation branch instead of pushing a duplicate screen on top.
+  /// - Secondary detail routes push cleanly at most once.
+  static void navigateWithRouter(GoRouter router, String route) {
+    HapticFeedback.selectionClick();
+    final target = route == emergencyQr ? qrTab : route;
+    if (target == home ||
+        target == medicalFile ||
+        target == labResults ||
+        target == prescriptions ||
+        target == qrTab) {
+      router.go(target);
+      return;
+    }
+    final currentPath = router.routerDelegate.currentConfiguration.uri.path;
+    if (currentPath == target) return;
+    router.push(target);
+  }
+
+  static void navigate(BuildContext context, String route) {
+    final router = GoRouter.maybeOf(context);
+    if (router == null) return;
+    navigateWithRouter(router, route);
+  }
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -125,11 +175,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: const ShareRecordScreen(),
         ),
       ),
-      // Main shell with bottom navigation
-      StatefulShellRoute.indexedStack(
-        builder: (context, state, shell) => MainShell(shell: shell),
+      // Main shell with swipeable PageView + bottom navigation
+      StatefulShellRoute(
+        builder: (context, state, shell) => shell,
+        navigatorContainerBuilder: (context, shell, children) =>
+            MainShell(shell: shell, children: children),
         branches: [
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: AppRoutes.home,
@@ -141,6 +194,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: AppRoutes.medicalFile,
@@ -152,6 +206,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: AppRoutes.labResults,
@@ -163,6 +218,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
                 path: AppRoutes.prescriptions,
@@ -174,9 +230,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            preload: true,
             routes: [
               GoRoute(
-                path: '/qr-tab',
+                path: AppRoutes.qrTab,
                 pageBuilder: (context, state) => NoTransitionPage(
                   key: state.pageKey,
                   child: const EmergencyQrScreen(fromLogin: false),

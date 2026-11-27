@@ -1,18 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart' hide TextDirection;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/l10n/app_localizations.dart';
 import '../../../../core/models/appointment_models.dart';
 import '../../../../core/providers/data_providers.dart';
 import '../../../../core/providers/session_provider.dart';
+import '../../../../core/services/app_permissions_service.dart';
+import '../../../../core/services/location_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/error_messages.dart';
 import '../../../../core/utils/providers.dart';
 import '../../../../core/utils/shared_widgets.dart';
 import '../../../../core/widgets/async_view.dart';
+import '../../../../core/widgets/responsive_center.dart';
 
 class AppointmentsScreen extends ConsumerStatefulWidget {
   const AppointmentsScreen({super.key});
@@ -34,6 +41,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     return Scaffold(
       backgroundColor: cs.surface,
       appBar: AppBar(
+        centerTitle: true,
         title: Text(l.appointmentsTitle),
         leading: IconButton(
           icon: Icon(isAr ? Icons.arrow_forward_rounded : Icons.arrow_back_rounded),
@@ -61,77 +69,80 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                   ? list
                   : list.where((a) => a.type == _filterType).toList();
 
-              return Column(
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                    child: Row(
-                      children: [
-                        ChoiceChip(
-                          label: Text(isAr ? 'الكل (${list.length})' : 'All (${list.length})'),
-                          selected: _filterType == null,
-                          onSelected: (_) => setState(() => _filterType = null),
-                        ),
-                        const SizedBox(width: 8),
-                        ChoiceChip(
-                          avatar: const Icon(Icons.local_hospital_rounded, size: 16),
-                          label: Text(
-                            '${l.appointmentTypeClinic} (${list.where((a) => a.type == AppointmentType.clinic).length})',
-                          ),
-                          selected: _filterType == AppointmentType.clinic,
-                          onSelected: (_) => setState(() => _filterType = AppointmentType.clinic),
-                        ),
-                        const SizedBox(width: 8),
-                        ChoiceChip(
-                          avatar: const Icon(Icons.biotech_rounded, size: 16),
-                          label: Text(
-                            '${l.appointmentTypeLab} (${list.where((a) => a.type == AppointmentType.lab).length})',
-                          ),
-                          selected: _filterType == AppointmentType.lab,
-                          onSelected: (_) => setState(() => _filterType = AppointmentType.lab),
-                        ),
-                        const SizedBox(width: 8),
-                        ChoiceChip(
-                          avatar: const Icon(Icons.radar_rounded, size: 16),
-                          label: Text(
-                            '${l.appointmentTypeRadiology} (${list.where((a) => a.type == AppointmentType.radiology).length})',
-                          ),
-                          selected: _filterType == AppointmentType.radiology,
-                          onSelected: (_) => setState(() => _filterType = AppointmentType.radiology),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: filtered.isEmpty
-                        ? ListView(
-                            padding: const EdgeInsets.all(16),
-                            children: [
-                              const SizedBox(height: 60),
-                              EmptyState(
-                                icon: Icons.event_busy_rounded,
-                                message: list.isEmpty
-                                    ? l.appointmentsEmpty
-                                    : (isAr
-                                        ? 'لا توجد مواعيد مسجلة في هذا التصنيف'
-                                        : 'No appointments in this category'),
-                              ),
-                            ],
-                          )
-                        : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-                            itemCount: filtered.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 10),
-                            itemBuilder: (context, i) => _AppointmentTile(
-                              l: l,
-                              cs: cs,
-                              isAr: isAr,
-                              appt: filtered[i],
+              return ResponsiveCenter(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: Center(
+                        child: Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ChoiceChip(
+                              label: Text(isAr ? 'الكل (${list.length})' : 'All (${list.length})'),
+                              selected: _filterType == null,
+                              onSelected: (_) => setState(() => _filterType = null),
                             ),
-                          ),
-                  ),
-                ],
+                            ChoiceChip(
+                              avatar: const Icon(Icons.local_hospital_rounded, size: 16),
+                              label: Text(
+                                '${l.appointmentTypeClinic} (${list.where((a) => a.type == AppointmentType.clinic).length})',
+                              ),
+                              selected: _filterType == AppointmentType.clinic,
+                              onSelected: (_) => setState(() => _filterType = AppointmentType.clinic),
+                            ),
+                            ChoiceChip(
+                              avatar: const Icon(Icons.biotech_rounded, size: 16),
+                              label: Text(
+                                '${l.appointmentTypeLab} (${list.where((a) => a.type == AppointmentType.lab).length})',
+                              ),
+                              selected: _filterType == AppointmentType.lab,
+                              onSelected: (_) => setState(() => _filterType = AppointmentType.lab),
+                            ),
+                            ChoiceChip(
+                              avatar: const Icon(Icons.radar_rounded, size: 16),
+                              label: Text(
+                                '${l.appointmentTypeRadiology} (${list.where((a) => a.type == AppointmentType.radiology).length})',
+                              ),
+                              selected: _filterType == AppointmentType.radiology,
+                              onSelected: (_) => setState(() => _filterType = AppointmentType.radiology),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? ListView(
+                              padding: const EdgeInsets.all(16),
+                              children: [
+                                const SizedBox(height: 60),
+                                EmptyState(
+                                  icon: Icons.event_busy_rounded,
+                                  message: list.isEmpty
+                                      ? l.appointmentsEmpty
+                                      : (isAr
+                                          ? 'لا توجد مواعيد مسجلة في هذا التصنيف'
+                                          : 'No appointments in this category'),
+                                ),
+                              ],
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 10),
+                              itemBuilder: (context, i) => _AppointmentTile(
+                                l: l,
+                                cs: cs,
+                                isAr: isAr,
+                                appt: filtered[i],
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
               );
             },
           ),
@@ -364,6 +375,45 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
   String? _selectedTime;
   bool _loadingSlots = false;
   bool _busy = false;
+  bool _detectingGeo = true;
+  LiveGeoContext? _geoContext;
+  LiveGeoFailure? _geoFailure;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_detectGeo());
+  }
+
+  Future<void> _detectGeo() async {
+    if (mounted) {
+      setState(() {
+        _detectingGeo = true;
+        _geoFailure = null;
+      });
+    }
+    final res = await LocationService.instance
+        .detectLiveLocation(ref.read(repositoryProvider));
+    if (!mounted) return;
+    setState(() {
+      _detectingGeo = false;
+      _geoContext = res.context;
+      _geoFailure = res.failure;
+      _doctorId = null;
+      _labId = null;
+      _slots = const [];
+      _selectedTime = null;
+    });
+  }
+
+  Future<void> _openDirections(double? lat, double? lng) async {
+    if (lat == null || lng == null) return;
+    final uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
   static const _commonLabPanels = [
     'Complete Blood Count (CBC)',
@@ -484,8 +534,21 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
     final cs = Theme.of(context).colorScheme;
     final isAr = ref.watch(localeProvider).languageCode == 'ar';
     final loc = Locale(isAr ? 'ar' : 'en');
-    final doctorsAsync = ref.watch(doctorsProvider);
-    final labsAsync = ref.watch(labsProvider);
+    final geo = _geoContext;
+    final GeoScopeArgs? geoArgs = geo == null
+        ? null
+        : (
+            lat: geo.latitude,
+            lng: geo.longitude,
+            governorate: geo.governorateCode,
+            strictGeo: true,
+          );
+    final doctorsAsync = geoArgs == null
+        ? const AsyncValue<List<DoctorOption>>.data(<DoctorOption>[])
+        : ref.watch(geoDoctorsProvider(geoArgs));
+    final labsAsync = geoArgs == null
+        ? const AsyncValue<List<LabFacilityOption>>.data(<LabFacilityOption>[])
+        : ref.watch(geoLabsProvider(geoArgs));
     final isRadiologyTab = _type == AppointmentType.radiology;
     final isAnalysisTab = _type == AppointmentType.lab;
 
@@ -586,7 +649,104 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (_type == AppointmentType.clinic) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _geoFailure != null
+                        ? cs.errorContainer.withOpacity(0.55)
+                        : cs.primaryContainer.withOpacity(0.45),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: (_geoFailure != null ? cs.error : cs.primary)
+                          .withOpacity(0.25),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            _detectingGeo
+                                ? Icons.my_location_rounded
+                                : _geoFailure != null
+                                    ? Icons.location_off_rounded
+                                    : Icons.location_on_rounded,
+                            size: 18,
+                            color:
+                                _geoFailure != null ? cs.error : cs.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _detectingGeo
+                                  ? (isAr
+                                      ? 'جارٍ تحديد موقعك الجغرافي الفعلي لمطابقة أقرب العيادات...'
+                                      : 'Detecting your live GPS location to match nearby providers...')
+                                  : _geoFailure != null
+                                      ? (isAr
+                                          ? _geoFailure!.messageAr
+                                          : _geoFailure!.messageEn)
+                                      : (isAr
+                                          ? 'موقعك الفعلي الآن: ${geo!.governorateAr} — تظهر العيادات والمعامل في نطاق موقعك الحالي فقط (بصرف النظر عن عنوان البطاقة)'
+                                          : 'Live GPS Area: ${geo!.governorateEn} — strictly showing doctors & labs at your current location'),
+                              style: AppTypography.labelSm.copyWith(
+                                color: _geoFailure != null
+                                    ? cs.onErrorContainer
+                                    : cs.onSurface,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: _detectingGeo ? null : _detectGeo,
+                            tooltip:
+                                isAr ? 'تحديث الموقع' : 'Refresh GPS',
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                          ),
+                        ],
+                      ),
+                      if (_geoFailure != null) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            FilledButton.tonalIcon(
+                              onPressed: _detectGeo,
+                              icon: const Icon(Icons.my_location_rounded,
+                                  size: 16),
+                              label: Text(
+                                isAr ? 'تحديد الموقع الآن' : 'Enable / Retry GPS',
+                              ),
+                            ),
+                            if (_geoFailure!.openLocationSettings)
+                              OutlinedButton(
+                                onPressed: () async {
+                                  await Geolocator.openLocationSettings();
+                                  await _detectGeo();
+                                },
+                                child: Text(isAr
+                                    ? 'إعدادات GPS'
+                                    : 'Location Settings'),
+                              ),
+                            if (_geoFailure!.openAppSettings)
+                              OutlinedButton(
+                                onPressed: () async {
+                                  await AppPermissionsService.instance
+                                      .openDeviceSettings();
+                                  await _detectGeo();
+                                },
+                                child: Text(isAr
+                                    ? 'صلاحيات التطبيق'
+                                    : 'App Permissions'),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (_type == AppointmentType.clinic && geo != null) ...[
                   Text(
                     isAr ? 'اختر العيادة والطبيب المعالج' : 'Choose Clinic & Physician',
                     style: AppTypography.labelLg.copyWith(color: cs.onSurface),
@@ -617,28 +777,83 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                               .toList();
                       final selectedVal =
                           filteredDocs.any((d) => d.id == _doctorId) ? _doctorId : null;
-                      return DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        value: selectedVal,
-                        hint: Text(
-                          filteredDocs.isEmpty
-                              ? (isAr ? 'لا توجد عيادة مطابقة للبحث' : 'No matching clinics')
-                              : (isAr ? '— اختر من العيادات المعتمدة بمصر —' : '— Select Clinic & Physician —'),
-                        ),
-                        items: [
-                          for (final d in filteredDocs)
-                            DropdownMenuItem(
-                              value: d.id,
-                              child: Text(
-                                '${d.name.pick(loc)} — ${d.speciality.pick(loc)}${d.facility.pick(loc).isNotEmpty ? ' (${d.facility.pick(loc)})' : ''}',
-                                overflow: TextOverflow.ellipsis,
+                      final chosenDoc = selectedVal == null
+                          ? null
+                          : filteredDocs
+                              .where((d) => d.id == selectedVal)
+                              .firstOrNull;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            value: selectedVal,
+                            hint: Text(
+                              filteredDocs.isEmpty
+                                  ? (isAr
+                                      ? 'لا توجد عيادة في نطاق موقعك الحالي'
+                                      : 'No clinics in your current GPS area')
+                                  : (isAr
+                                      ? '— اختر من عيادات ${geo.governorateAr} القريبة —'
+                                      : '— Select Clinic in ${geo.governorateEn} —'),
+                            ),
+                            items: [
+                              for (final d in filteredDocs)
+                                DropdownMenuItem(
+                                  value: d.id,
+                                  child: Text(
+                                    '${d.name.pick(loc)} — ${d.speciality.pick(loc)}${d.distanceKm != null ? ' (${d.distanceKm!.toStringAsFixed(1)} ${isAr ? "كم" : "km"})' : ''}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (v) {
+                              setState(() => _doctorId = v);
+                              _fetchDoctorSlots();
+                            },
+                          ),
+                          if (chosenDoc != null) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: cs.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.pin_drop_outlined,
+                                      size: 16, color: cs.secondary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      [
+                                        if (chosenDoc.facility.pick(loc).isNotEmpty)
+                                          chosenDoc.facility.pick(loc),
+                                        if (chosenDoc.formattedAddress(isAr).isNotEmpty)
+                                          chosenDoc.formattedAddress(isAr),
+                                        if (chosenDoc.distanceKm != null)
+                                          '${chosenDoc.distanceKm!.toStringAsFixed(1)} ${isAr ? "كم من موقعك" : "km away"}',
+                                      ].join(' • '),
+                                      style: AppTypography.labelSm,
+                                    ),
+                                  ),
+                                  if (chosenDoc.latitude != null &&
+                                      chosenDoc.longitude != null)
+                                    TextButton.icon(
+                                      onPressed: () => _openDirections(
+                                          chosenDoc.latitude,
+                                          chosenDoc.longitude),
+                                      icon: const Icon(Icons.directions_rounded,
+                                          size: 16),
+                                      label: Text(
+                                          isAr ? 'خرائط' : 'Map'),
+                                    ),
+                                ],
                               ),
                             ),
+                          ],
                         ],
-                        onChanged: (v) {
-                          setState(() => _doctorId = v);
-                          _fetchDoctorSlots();
-                        },
                       );
                     },
                     loading: () => const LinearProgressIndicator(),
@@ -649,7 +864,7 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                   ),
                   const SizedBox(height: 12),
                 ],
-                if (isAnalysisTab || isRadiologyTab) ...[
+                if ((isAnalysisTab || isRadiologyTab) && geo != null) ...[
                   Text(
                     isRadiologyTab
                         ? (isAr ? 'اختر معمل / مركز الأشعة المسجل' : 'Choose Registered Radiology Center')
@@ -684,29 +899,77 @@ class _RequestAppointmentSheetState extends ConsumerState<_RequestAppointmentShe
                               .toList();
                       final selectedLab =
                           filteredLabs.any((l) => l.id == _labId) ? _labId : null;
-                      return DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        value: selectedLab,
-                        hint: Text(
-                          filteredLabs.isEmpty
-                              ? (isRadiologyTab
-                                  ? (isAr ? 'لا يوجد مركز أشعة مطابق للبحث' : 'No matching radiology centers')
-                                  : (isAr ? 'لا يوجد معمل تحاليل مطابق للبحث' : 'No matching analysis labs'))
-                              : (isRadiologyTab
-                                  ? (isAr ? '— اختر من مراكز الأشعة المعتمدة —' : '— Select Registered Radiology Center —')
-                                  : (isAr ? '— اختر من معامل التحاليل المعتمدة —' : '— Select Registered Analysis Lab —')),
-                        ),
-                        items: [
-                          for (final lab in filteredLabs)
-                            DropdownMenuItem(
-                              value: lab.id,
-                              child: Text(
-                                lab.name.pick(loc),
-                                overflow: TextOverflow.ellipsis,
+                      final chosenLab = selectedLab == null
+                          ? null
+                          : filteredLabs
+                              .where((l) => l.id == selectedLab)
+                              .firstOrNull;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            value: selectedLab,
+                            hint: Text(
+                              filteredLabs.isEmpty
+                                  ? (isRadiologyTab
+                                      ? (isAr ? 'لا يوجد مركز أشعة في نطاق موقعك' : 'No radiology centers in area')
+                                      : (isAr ? 'لا يوجد معمل تحاليل في نطاق موقعك' : 'No analysis labs in area'))
+                                  : (isRadiologyTab
+                                      ? (isAr ? '— مراكز الأشعة في ${geo.governorateAr} —' : '— Radiology Centers in ${geo.governorateEn} —')
+                                      : (isAr ? '— معامل التحاليل في ${geo.governorateAr} —' : '— Analysis Labs in ${geo.governorateEn} —')),
+                            ),
+                            items: [
+                              for (final lab in filteredLabs)
+                                DropdownMenuItem(
+                                  value: lab.id,
+                                  child: Text(
+                                    '${lab.name.pick(loc)}${lab.distanceKm != null ? ' (${lab.distanceKm!.toStringAsFixed(1)} ${isAr ? "كم" : "km"})' : ''}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (v) => setState(() => _labId = v),
+                          ),
+                          if (chosenLab != null) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: cs.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.pin_drop_outlined,
+                                      size: 16, color: cs.secondary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      [
+                                        if (chosenLab.formattedAddress(isAr).isNotEmpty)
+                                          chosenLab.formattedAddress(isAr),
+                                        if (chosenLab.distanceKm != null)
+                                          '${chosenLab.distanceKm!.toStringAsFixed(1)} ${isAr ? "كم من موقعك" : "km away"}',
+                                      ].join(' • '),
+                                      style: AppTypography.labelSm,
+                                    ),
+                                  ),
+                                  if (chosenLab.latitude != null &&
+                                      chosenLab.longitude != null)
+                                    TextButton.icon(
+                                      onPressed: () => _openDirections(
+                                          chosenLab.latitude,
+                                          chosenLab.longitude),
+                                      icon: const Icon(Icons.directions_rounded,
+                                          size: 16),
+                                      label: Text(isAr ? 'خرائط' : 'Map'),
+                                    ),
+                                ],
                               ),
                             ),
+                          ],
                         ],
-                        onChanged: (v) => setState(() => _labId = v),
                       );
                     },
                     loading: () => const LinearProgressIndicator(),

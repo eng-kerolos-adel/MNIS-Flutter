@@ -35,11 +35,22 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
   final _localAuth = LocalAuthentication();
   bool _checking = false;
   bool _failed = false;
+  BiometricCapabilities _bioCaps = const BiometricCapabilities(
+    available: false,
+    hasFace: false,
+    hasFingerprint: false,
+  );
 
   @override
   void initState() {
     super.initState();
+    _loadCaps();
     WidgetsBinding.instance.addPostFrameCallback((_) => _attempt());
+  }
+
+  Future<void> _loadCaps() async {
+    final caps = await getBiometricCapabilities(_localAuth);
+    if (mounted) setState(() => _bioCaps = caps);
   }
 
   Future<void> _attempt() async {
@@ -49,11 +60,14 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       _failed = false;
     });
     final isAr = ref.read(localeProvider).languageCode == 'ar';
+    final caps = await getBiometricCapabilities(_localAuth);
+    if (mounted) setState(() => _bioCaps = caps);
+    final bioLabel = caps.label(isAr);
     final ok = await authenticateWithBiometrics(
       _localAuth,
       reason: isAr
-          ? 'أثبت هويتك لفتح تطبيق MNIS'
-          : 'Verify your identity to unlock MNIS',
+          ? 'أثبت هويتك عبر $bioLabel لفتح تطبيق MNIS'
+          : 'Verify with $bioLabel to unlock MNIS',
     );
 
     if (!mounted) return;
@@ -172,7 +186,9 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
                             : Icon(
                                 _failed
                                     ? Icons.lock_outline_rounded
-                                    : Icons.fingerprint_rounded,
+                                    : (_bioCaps.hasFace && !_bioCaps.hasFingerprint
+                                        ? Icons.face_rounded
+                                        : Icons.fingerprint_rounded),
                                 size: 48,
                                 color: _failed ? cs.error : cs.secondary,
                               ),
@@ -180,9 +196,12 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      _failed ? l.biometricFailed : l.tapToUnlock,
+                      _failed
+                          ? l.biometricFailed
+                          : '${l.tapToUnlock} (${_bioCaps.label(ref.watch(localeProvider).languageCode == "ar")})',
                       style: AppTypography.labelLg.copyWith(
                           color: _failed ? cs.error : cs.onSurfaceVariant),
+                      textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 32),
                     TextButton(
